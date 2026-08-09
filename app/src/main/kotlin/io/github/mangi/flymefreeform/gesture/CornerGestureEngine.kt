@@ -1,8 +1,6 @@
 package io.github.mangi.flymefreeform.gesture
 
-import kotlin.math.hypot
 import kotlin.math.max
-import kotlin.math.min
 
 internal enum class CornerSide {
     Left,
@@ -44,30 +42,30 @@ internal object AdaptiveCornerGestureConfig {
         displayWidth: Float,
         displayHeight: Float,
         touchSlop: Float,
+        density: Float,
+        triggerRangeDp: Int,
         leftEnabled: Boolean,
         rightEnabled: Boolean,
     ): CornerGestureConfig {
-        val shortEdge = min(displayWidth, displayHeight).coerceAtLeast(1f)
-        val triggerRadius = max(shortEdge * TRIGGER_EDGE_FRACTION, touchSlop * TRIGGER_SLOP_MULTIPLIER)
+        val safeDensity = density.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val triggerRadius = CornerTriggerRegion.radiusPx(triggerRangeDp, safeDensity)
         return CornerGestureConfig(
             displayWidth = displayWidth,
             displayHeight = displayHeight,
             triggerRadius = triggerRadius,
-            inwardThreshold = max(touchSlop * INWARD_SLOP_MULTIPLIER, triggerRadius * INWARD_FRACTION),
-            upwardThreshold = max(touchSlop * UPWARD_SLOP_MULTIPLIER, triggerRadius * UPWARD_FRACTION),
-            reverseTolerance = max(touchSlop, triggerRadius * REVERSE_FRACTION),
+            inwardThreshold = max(touchSlop * INWARD_SLOP_MULTIPLIER, safeDensity * INWARD_DP),
+            upwardThreshold = max(touchSlop * UPWARD_SLOP_MULTIPLIER, safeDensity * UPWARD_DP),
+            reverseTolerance = max(touchSlop, safeDensity * REVERSE_TOLERANCE_DP),
             leftEnabled = leftEnabled,
             rightEnabled = rightEnabled,
         )
     }
 
-    private const val TRIGGER_EDGE_FRACTION = 0.175f
-    private const val TRIGGER_SLOP_MULTIPLIER = 8f
     private const val INWARD_SLOP_MULTIPLIER = 1.75f
-    private const val INWARD_FRACTION = 0.16f
     private const val UPWARD_SLOP_MULTIPLIER = 0.50f
-    private const val UPWARD_FRACTION = 0.055f
-    private const val REVERSE_FRACTION = 0.11f
+    private const val INWARD_DP = 14f
+    private const val UPWARD_DP = 4f
+    private const val REVERSE_TOLERANCE_DP = 8f
 }
 
 /** 单指角落手势状态机；不持有 MotionEvent，便于跨进程入口复用与单元测试。 */
@@ -148,16 +146,15 @@ internal class CornerGestureEngine {
         get() = claimed
 
     private fun detectSide(x: Float, y: Float, config: CornerGestureConfig): CornerSide? {
-        val fromBottom = config.displayHeight - y
-        if (fromBottom < 0f || fromBottom > config.triggerRadius) return null
-        if (config.leftEnabled && hypot(x, fromBottom) <= config.triggerRadius) {
-            return CornerSide.Left
-        }
-        val fromRight = config.displayWidth - x
-        if (config.rightEnabled && hypot(fromRight, fromBottom) <= config.triggerRadius) {
-            return CornerSide.Right
-        }
-        return null
+        return CornerTriggerRegion.detectSide(
+            x = x,
+            y = y,
+            displayWidth = config.displayWidth,
+            displayHeight = config.displayHeight,
+            radius = config.triggerRadius,
+            leftEnabled = config.leftEnabled,
+            rightEnabled = config.rightEnabled,
+        )
     }
 
     private fun reset() {

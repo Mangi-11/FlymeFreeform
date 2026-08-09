@@ -51,6 +51,14 @@ internal class FrameworkConnectionRepository {
     fun setRightCornerEnabled(enabled: Boolean) =
         updateSettings { it.copy(rightCornerEnabled = enabled) }
 
+    fun setCornerTriggerRangeDp(rangeDp: Int) =
+        updateSettings {
+            it.copy(
+                cornerTriggerRangeDp =
+                    ModulePreferences.coerceCornerTriggerRangeDp(rangeDp),
+            )
+        }
+
     fun setRadialCircularIconsEnabled(enabled: Boolean) =
         updateSettings { it.copy(radialCircularIconsEnabled = enabled) }
 

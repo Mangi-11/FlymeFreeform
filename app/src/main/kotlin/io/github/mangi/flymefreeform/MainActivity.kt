@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
                             onModuleEnabledChange = repository::setModuleEnabled,
                             onLeftCornerEnabledChange = repository::setLeftCornerEnabled,
                             onRightCornerEnabledChange = repository::setRightCornerEnabled,
+                            onCornerTriggerRangeChange = repository::setCornerTriggerRangeDp,
                             onRadialCircularIconsEnabledChange =
                                 repository::setRadialCircularIconsEnabled,
                             onRadialIconContentScaleChange =

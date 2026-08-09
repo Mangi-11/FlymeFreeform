@@ -38,6 +38,9 @@
     <string name="left_corner_summary">从左下角斜向内上滑呼出扇形菜单</string>
     <string name="right_corner_title">右下角手势</string>
     <string name="right_corner_summary">从右下角斜向内上滑呼出扇形菜单</string>
+    <string name="corner_trigger_range_title">角落触发范围</string>
+    <string name="corner_trigger_range_summary">范围越大越容易呼出；范围内的系统手势由扇形菜单接管</string>
+    <string name="dp_value">%1$d dp</string>
     <string name="radial_apps_title">扇形应用</string>
     <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的六个应用</string>
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>

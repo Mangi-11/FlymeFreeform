@@ -13,6 +13,7 @@ class ModuleSettingsSnapshotTest {
 
         assertEquals(120, snapshot.radialIconContentScalePercent)
         assertEquals(100, snapshot.radialIconMaskScalePercent)
+        assertEquals(84, snapshot.cornerTriggerRangeDp)
         assertTrue(snapshot.radialCircularIconsEnabled)
     }
 
@@ -22,12 +23,14 @@ class ModuleSettingsSnapshotTest {
             InMemoryPreferences(
                 ModulePreferences.KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT to 40,
                 ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT to 180,
+                ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP to 8,
             )
 
         val snapshot = ModuleSettingsSnapshot.readFrom(preferences)
 
         assertEquals(80, snapshot.radialIconContentScalePercent)
         assertEquals(120, snapshot.radialIconMaskScalePercent)
+        assertEquals(24, snapshot.cornerTriggerRangeDp)
     }
 
     @Test
@@ -37,6 +40,7 @@ class ModuleSettingsSnapshotTest {
             radialIconContentScalePercent = 121,
             radialIconMaskScalePercent = 79,
             radialCircularIconsEnabled = false,
+            cornerTriggerRangeDp = 200,
         ).writeTo(preferences.edit()).commit()
 
         assertEquals(
@@ -47,9 +51,14 @@ class ModuleSettingsSnapshotTest {
             80,
             preferences.getInt(ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT, 0),
         )
+        assertEquals(
+            160,
+            preferences.getInt(ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP, 0),
+        )
         val restored = ModuleSettingsSnapshot.readFrom(preferences)
         assertEquals(120, restored.radialIconContentScalePercent)
         assertEquals(80, restored.radialIconMaskScalePercent)
+        assertEquals(160, restored.cornerTriggerRangeDp)
         assertFalse(restored.radialCircularIconsEnabled)
     }
 }

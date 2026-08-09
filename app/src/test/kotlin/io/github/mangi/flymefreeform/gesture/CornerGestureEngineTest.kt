@@ -51,6 +51,16 @@ class CornerGestureEngineTest {
     }
 
     @Test
+    fun tapAndSubThresholdMovementNeverClaimInput() {
+        val engine = CornerGestureEngine()
+
+        assertTrue(engine.down(0, 5f, 1995f, config) is GestureAction.PassThrough)
+        assertTrue(engine.move(0, 1, 15f, 1992f, config) is GestureAction.PassThrough)
+        assertTrue(engine.up(0) is GestureAction.PassThrough)
+        assertFalse(engine.isClaimed)
+    }
+
+    @Test
     fun cancelAfterActivationReportsCancellationAndResets() {
         val engine = CornerGestureEngine()
         engine.down(0, 5f, 1995f, config)
@@ -60,12 +70,24 @@ class CornerGestureEngineTest {
     }
 
     @Test
-    fun adaptiveConfigFollowsWindowAndSystemTouchSlop() {
+    fun secondPointerCancelsAnActivatedMenu() {
+        val engine = CornerGestureEngine()
+        engine.down(0, 5f, 1995f, config)
+        engine.move(0, 1, 25f, 1985f, config)
+
+        assertTrue(engine.move(0, 2, 30f, 1980f, config) is GestureAction.Cancel)
+        assertFalse(engine.isClaimed)
+    }
+
+    @Test
+    fun configuredRangeUsesDpWhileMovementThresholdsIgnoreRange() {
         val compact =
             AdaptiveCornerGestureConfig.create(
                 displayWidth = 800f,
                 displayHeight = 1600f,
                 touchSlop = 10f,
+                density = 2f,
+                triggerRangeDp = 84,
                 leftEnabled = true,
                 rightEnabled = true,
             )
@@ -74,6 +96,8 @@ class CornerGestureEngineTest {
                 displayWidth = 1600f,
                 displayHeight = 2400f,
                 touchSlop = 10f,
+                density = 2f,
+                triggerRangeDp = 160,
                 leftEnabled = true,
                 rightEnabled = true,
             )
@@ -82,12 +106,16 @@ class CornerGestureEngineTest {
                 displayWidth = 800f,
                 displayHeight = 1600f,
                 touchSlop = 30f,
+                density = 2f,
+                triggerRangeDp = 84,
                 leftEnabled = true,
                 rightEnabled = true,
             )
 
         assertTrue(wide.triggerRadius > compact.triggerRadius)
-        assertTrue(largerTouchSlop.triggerRadius > compact.triggerRadius)
+        assertTrue(largerTouchSlop.triggerRadius == compact.triggerRadius)
+        assertTrue(wide.inwardThreshold == compact.inwardThreshold)
+        assertTrue(wide.upwardThreshold == compact.upwardThreshold)
         assertTrue(largerTouchSlop.inwardThreshold > compact.inwardThreshold)
     }
 }

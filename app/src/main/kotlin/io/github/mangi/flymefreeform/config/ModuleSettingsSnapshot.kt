@@ -7,6 +7,7 @@ internal data class ModuleSettingsSnapshot(
     val enabled: Boolean = ModulePreferences.DEFAULT_ENABLED,
     val leftCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
     val rightCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
+    val cornerTriggerRangeDp: Int = ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
     val pinsSaved: Boolean = false,
     val pinnedComponents: List<ComponentName> = emptyList(),
     val radialIconContentScalePercent: Int =
@@ -21,6 +22,10 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(ModulePreferences.KEY_MODULE_ENABLED, enabled)
             .putBoolean(ModulePreferences.KEY_LEFT_CORNER_ENABLED, leftCornerEnabled)
             .putBoolean(ModulePreferences.KEY_RIGHT_CORNER_ENABLED, rightCornerEnabled)
+            .putInt(
+                ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP,
+                ModulePreferences.coerceCornerTriggerRangeDp(cornerTriggerRangeDp),
+            )
             .putBoolean(
                 ModulePreferences.KEY_RADIAL_CIRCULAR_ICONS_ENABLED,
                 radialCircularIconsEnabled,
@@ -61,6 +66,13 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_RIGHT_CORNER_ENABLED,
                     ModulePreferences.DEFAULT_CORNER_ENABLED,
                 )
+            val cornerTriggerRangeDp =
+                ModulePreferences.coerceCornerTriggerRangeDp(
+                    preferences.getInt(
+                        ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP,
+                        ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
+                    ),
+                )
             val radialCircularIconsEnabled =
                 preferences.getBoolean(
                     ModulePreferences.KEY_RADIAL_CIRCULAR_ICONS_ENABLED,
@@ -93,6 +105,7 @@ internal data class ModuleSettingsSnapshot(
                 enabled = enabled,
                 leftCornerEnabled = leftEnabled,
                 rightCornerEnabled = rightEnabled,
+                cornerTriggerRangeDp = cornerTriggerRangeDp,
                 pinsSaved = pinsSaved,
                 pinnedComponents = pins,
                 radialIconContentScalePercent = radialIconContentScalePercent,

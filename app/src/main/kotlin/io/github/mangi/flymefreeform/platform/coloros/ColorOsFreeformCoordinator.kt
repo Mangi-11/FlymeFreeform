@@ -16,6 +16,7 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
+import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
 import io.github.mangi.flymefreeform.gesture.GestureAction
 import io.github.mangi.flymefreeform.hook.GestureEnvironmentState
@@ -72,6 +73,7 @@ internal class ColorOsFreeformCoordinator(
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
+    private var activeGestureConfig: CornerGestureConfig? = null
     private val pointerQueueLock = Any()
     private var pendingMove: MotionEvent? = null
     private var movePosted = false
@@ -112,6 +114,7 @@ internal class ColorOsFreeformCoordinator(
         } else {
             unregisterPointerListener()
             activeEnvironmentApproved = false
+            activeGestureConfig = null
             gestureEngine.cancel()
             removeOverlay()
         }
@@ -235,7 +238,10 @@ internal class ColorOsFreeformCoordinator(
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             activeEnvironmentApproved = isGestureEnvironmentAllowed()
-            if (!activeEnvironmentApproved) return
+            if (!activeEnvironmentApproved) {
+                activeGestureConfig = null
+                return
+            }
         } else if (!activeEnvironmentApproved) {
             return
         }
@@ -246,13 +252,19 @@ internal class ColorOsFreeformCoordinator(
         }
         val metrics = context.resources.displayMetrics
         val config =
-            AdaptiveCornerGestureConfig.create(
-                displayWidth = metrics.widthPixels.toFloat(),
-                displayHeight = metrics.heightPixels.toFloat(),
-                touchSlop = touchSlop,
-                leftEnabled = settings.leftCornerEnabled,
-                rightEnabled = settings.rightCornerEnabled,
-            )
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                AdaptiveCornerGestureConfig.create(
+                    displayWidth = metrics.widthPixels.toFloat(),
+                    displayHeight = metrics.heightPixels.toFloat(),
+                    touchSlop = touchSlop,
+                    density = metrics.density,
+                    triggerRangeDp = settings.cornerTriggerRangeDp,
+                    leftEnabled = settings.leftCornerEnabled,
+                    rightEnabled = settings.rightCornerEnabled,
+                ).also { activeGestureConfig = it }
+            } else {
+                activeGestureConfig ?: return
+            }
         val action =
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN ->
@@ -283,6 +295,7 @@ internal class ColorOsFreeformCoordinator(
         }
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             activeEnvironmentApproved = false
+            activeGestureConfig = null
         }
     }
 
@@ -385,6 +398,7 @@ internal class ColorOsFreeformCoordinator(
         }
 
     private fun cancelActiveGesture() {
+        activeGestureConfig = null
         gestureEngine.cancel()
         overlay?.cancelGesture()
     }

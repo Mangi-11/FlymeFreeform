@@ -1,6 +1,7 @@
 package io.github.mangi.flymefreeform.ui
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,6 +26,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -55,6 +60,7 @@ internal fun ControlScreen(
     onModuleEnabledChange: (Boolean) -> Unit,
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
+    onCornerTriggerRangeChange: (Int) -> Unit,
     onRadialCircularIconsEnabledChange: (Boolean) -> Unit,
     onRadialIconContentScaleChange: (Int) -> Unit,
     onRadialIconMaskScaleChange: (Int) -> Unit,
@@ -62,6 +68,10 @@ internal fun ControlScreen(
     onManageApps: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
+    var cornerRangePreviewDp by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(state.canChangeSettings) {
+        if (!state.canChangeSettings) cornerRangePreviewDp = null
+    }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val windowWidth = maxWidth
         val isWideScreen = windowWidth >= WideWindowMinWidth
@@ -112,6 +122,8 @@ internal fun ControlScreen(
                         onModuleEnabledChange,
                         onLeftCornerEnabledChange,
                         onRightCornerEnabledChange,
+                        onCornerTriggerRangeChange,
+                        onCornerRangePreviewChange = { cornerRangePreviewDp = it },
                         onManageApps,
                     )
                 }
@@ -126,6 +138,13 @@ internal fun ControlScreen(
                 }
                 item(key = "about") { AboutSection() }
             }
+        }
+        cornerRangePreviewDp?.let { rangeDp ->
+            CornerRangePreview(
+                rangeDp = rangeDp,
+                leftEnabled = state.settings.leftCornerEnabled,
+                rightEnabled = state.settings.rightCornerEnabled,
+            )
         }
     }
 }
@@ -191,6 +210,8 @@ private fun SettingsSection(
     onModuleEnabledChange: (Boolean) -> Unit,
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
+    onCornerTriggerRangeChange: (Int) -> Unit,
+    onCornerRangePreviewChange: (Int?) -> Unit,
     onManageApps: () -> Unit,
 ) {
     val moduleSummary =
@@ -231,6 +252,15 @@ private fun SettingsSection(
                 summary = stringResource(R.string.right_corner_summary),
                 enabled = state.canChangeSettings,
             )
+            RemoteDpSliderPreference(
+                confirmedValue = state.settings.cornerTriggerRangeDp,
+                isUpdating = state.isUpdating,
+                enabled = state.canChangeSettings,
+                title = stringResource(R.string.corner_trigger_range_title),
+                summary = stringResource(R.string.corner_trigger_range_summary),
+                onPreviewChange = onCornerRangePreviewChange,
+                onCommit = onCornerTriggerRangeChange,
+            )
             ArrowPreference(
                 title = stringResource(R.string.radial_apps_title),
                 summary = appsSummary,
@@ -238,6 +268,103 @@ private fun SettingsSection(
                 enabled = state.canChangeSettings,
             )
         }
+    }
+}
+
+@Composable
+private fun RemoteDpSliderPreference(
+    confirmedValue: Int,
+    isUpdating: Boolean,
+    enabled: Boolean,
+    title: String,
+    summary: String,
+    onPreviewChange: (Int?) -> Unit,
+    onCommit: (Int) -> Unit,
+) {
+    var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
+    var isDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(confirmedValue, isUpdating, enabled) {
+        if (!enabled) {
+            isDragging = false
+            onPreviewChange(null)
+        }
+        if (!isDragging && !isUpdating) draftValue = confirmedValue.toFloat()
+    }
+    SliderPreference(
+        value = draftValue,
+        onValueChange = { value ->
+            isDragging = true
+            val draft = ModulePreferences.coerceCornerTriggerRangeDp(value.roundToInt())
+            draftValue = draft.toFloat()
+            onPreviewChange(draft)
+        },
+        title = title,
+        summary = summary,
+        valueText = stringResource(R.string.dp_value, draftValue.roundToInt()),
+        enabled = enabled,
+        valueRange =
+            ModulePreferences.MIN_CORNER_TRIGGER_RANGE_DP.toFloat()..
+                ModulePreferences.MAX_CORNER_TRIGGER_RANGE_DP.toFloat(),
+        steps =
+            ModulePreferences.MAX_CORNER_TRIGGER_RANGE_DP -
+                ModulePreferences.MIN_CORNER_TRIGGER_RANGE_DP -
+                1,
+        onValueChangeFinished = {
+            isDragging = false
+            onPreviewChange(null)
+            val committed =
+                ModulePreferences.coerceCornerTriggerRangeDp(draftValue.roundToInt())
+            draftValue = committed.toFloat()
+            if (committed != confirmedValue) onCommit(committed)
+        },
+    )
+}
+
+@Composable
+private fun CornerRangePreview(
+    rangeDp: Int,
+    leftEnabled: Boolean,
+    rightEnabled: Boolean,
+) {
+    val activeColor = MiuixTheme.colorScheme.primary
+    val inactiveColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val radius = rangeDp.dp.toPx()
+        val arcSize = Size(radius * 2f, radius * 2f)
+        val strokeWidth = 2.dp.toPx()
+        val dash = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx()))
+
+        fun drawCorner(startAngle: Float, topLeft: Offset, enabled: Boolean) {
+            val color = if (enabled) activeColor else inactiveColor
+            drawArc(
+                color = color.copy(alpha = if (enabled) 0.22f else 0.08f),
+                startAngle = startAngle,
+                sweepAngle = 90f,
+                useCenter = true,
+                topLeft = topLeft,
+                size = arcSize,
+            )
+            drawArc(
+                color = color.copy(alpha = if (enabled) 0.82f else 0.30f),
+                startAngle = startAngle,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = strokeWidth, pathEffect = dash),
+            )
+        }
+
+        drawCorner(
+            startAngle = 270f,
+            topLeft = Offset(-radius, size.height - radius),
+            enabled = leftEnabled,
+        )
+        drawCorner(
+            startAngle = 180f,
+            topLeft = Offset(size.width - radius, size.height - radius),
+            enabled = rightEnabled,
+        )
     }
 }
 
