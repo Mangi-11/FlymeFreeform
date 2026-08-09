@@ -1,0 +1,48 @@
+# Gradle / Kotlin generated state
+.gradle/
+.kotlin/
+**/build/
+
+# Local machine configuration
+local.properties
+*.log
+*.hprof
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Packaged build artifacts
+*.apk
+*.aab
+*.apks
+*.idsig
+output-metadata.json
+/app/debug/
+/app/release/
+/app/profile/
+
+# Signing and service configuration
+*.jks
+*.keystore
+key.properties
+keystore.properties
+signing.properties
+secrets.properties
+google-services.json
+
+# Local research and reverse-engineering material
+/references/
+/.analysis/
+/reverse/
+/decompiled/
+
+# Local AI development instructions
+/AGENTS.md
+
+# Operating system files
+.DS_Store
+Thumbs.db

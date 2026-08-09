@@ -1,0 +1,15 @@
+[versions]
+agp = "9.3.1"
+kotlin = "2.4.0"
+libxposedApi = "102.0.0"
+libxposedService = "102.0.0"
+miuix = "0.9.3"
+
+[libraries]
+libxposed-api = { group = "io.github.libxposed", name = "api", version.ref = "libxposedApi" }
+libxposed-service = { group = "io.github.libxposed", name = "service", version.ref = "libxposedService" }
+miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui-android", version.ref = "miuix" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

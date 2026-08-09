@@ -1,0 +1,6 @@
+# libxposed 通过资源文件中的类名加载模块入口；混淆入口时同步改写该文件。
+-dontwarn io.github.libxposed.annotation.**
+-adaptresourcefilecontents META-INF/xposed/java_init.list
+-keep,allowoptimization,allowobfuscation public class * extends io.github.libxposed.api.XposedModule {
+    public <init>();
+}
