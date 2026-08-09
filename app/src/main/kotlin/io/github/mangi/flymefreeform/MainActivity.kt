@@ -42,6 +42,12 @@ class MainActivity : ComponentActivity() {
                             onModuleEnabledChange = repository::setModuleEnabled,
                             onLeftCornerEnabledChange = repository::setLeftCornerEnabled,
                             onRightCornerEnabledChange = repository::setRightCornerEnabled,
+                            onRadialCircularIconsEnabledChange =
+                                repository::setRadialCircularIconsEnabled,
+                            onRadialIconContentScaleChange =
+                                repository::setRadialIconContentScalePercent,
+                            onRadialIconMaskScaleChange =
+                                repository::setRadialIconMaskScalePercent,
                             onRequestScopes = repository::requestMissingScopes,
                             onManageApps = { screen = Screen.PinnedApps },
                         )

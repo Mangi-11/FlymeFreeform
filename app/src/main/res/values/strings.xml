@@ -43,6 +43,15 @@
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>
     <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
 
+    <string name="section_radial_appearance">扇形显示</string>
+    <string name="radial_circular_icons_title">圆形扇形图标</string>
+    <string name="radial_circular_icons_summary">将弧线展开的应用图标显示为可调圆形容器</string>
+    <string name="radial_icon_content_scale_title">图标内容大小</string>
+    <string name="radial_icon_content_scale_summary">调整圆形容器内图标图案的大小</string>
+    <string name="radial_icon_mask_scale_title">圆形遮罩大小</string>
+    <string name="radial_icon_mask_scale_summary">调整扇形图标圆形裁剪区域的大小</string>
+    <string name="percent_value">%1$d%%</string>
+
     <string name="radial_apps_screen_title">扇形应用</string>
     <string name="radial_apps_screen_subtitle">固定、替换和调整扇形顺序</string>
     <string name="pinned_slots_title">固定槽位</string>

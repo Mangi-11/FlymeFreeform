@@ -17,6 +17,13 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -25,6 +32,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.mangi.flymefreeform.R
+import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionIssue
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionStatus
@@ -36,8 +44,10 @@ import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.math.roundToInt
 
 @Composable
 internal fun ControlScreen(
@@ -45,6 +55,9 @@ internal fun ControlScreen(
     onModuleEnabledChange: (Boolean) -> Unit,
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
+    onRadialCircularIconsEnabledChange: (Boolean) -> Unit,
+    onRadialIconContentScaleChange: (Int) -> Unit,
+    onRadialIconMaskScaleChange: (Int) -> Unit,
     onRequestScopes: () -> Unit,
     onManageApps: () -> Unit,
 ) {
@@ -100,6 +113,15 @@ internal fun ControlScreen(
                         onLeftCornerEnabledChange,
                         onRightCornerEnabledChange,
                         onManageApps,
+                    )
+                }
+                item(key = "radial_appearance") {
+                    RadialAppearanceSection(
+                        state = state,
+                        onRadialCircularIconsEnabledChange =
+                            onRadialCircularIconsEnabledChange,
+                        onRadialIconContentScaleChange = onRadialIconContentScaleChange,
+                        onRadialIconMaskScaleChange = onRadialIconMaskScaleChange,
                     )
                 }
                 item(key = "about") { AboutSection() }
@@ -217,6 +239,84 @@ private fun SettingsSection(
             )
         }
     }
+}
+
+@Composable
+private fun RadialAppearanceSection(
+    state: FrameworkConnectionState,
+    onRadialCircularIconsEnabledChange: (Boolean) -> Unit,
+    onRadialIconContentScaleChange: (Int) -> Unit,
+    onRadialIconMaskScaleChange: (Int) -> Unit,
+) {
+    Section(title = stringResource(R.string.section_radial_appearance)) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            SwitchPreference(
+                checked = state.settings.radialCircularIconsEnabled,
+                onCheckedChange = onRadialCircularIconsEnabledChange,
+                title = stringResource(R.string.radial_circular_icons_title),
+                summary = stringResource(R.string.radial_circular_icons_summary),
+                enabled = state.canChangeSettings,
+            )
+            RemotePercentSliderPreference(
+                confirmedValue = state.settings.radialIconContentScalePercent,
+                isUpdating = state.isUpdating,
+                enabled = state.canChangeSettings && state.settings.radialCircularIconsEnabled,
+                title = stringResource(R.string.radial_icon_content_scale_title),
+                summary = stringResource(R.string.radial_icon_content_scale_summary),
+                onCommit = onRadialIconContentScaleChange,
+            )
+            RemotePercentSliderPreference(
+                confirmedValue = state.settings.radialIconMaskScalePercent,
+                isUpdating = state.isUpdating,
+                enabled = state.canChangeSettings && state.settings.radialCircularIconsEnabled,
+                title = stringResource(R.string.radial_icon_mask_scale_title),
+                summary = stringResource(R.string.radial_icon_mask_scale_summary),
+                onCommit = onRadialIconMaskScaleChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RemotePercentSliderPreference(
+    confirmedValue: Int,
+    isUpdating: Boolean,
+    enabled: Boolean,
+    title: String,
+    summary: String,
+    onCommit: (Int) -> Unit,
+) {
+    var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
+    var isDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(confirmedValue, isUpdating, enabled) {
+        if (!enabled) isDragging = false
+        if (!isDragging && !isUpdating) draftValue = confirmedValue.toFloat()
+    }
+    SliderPreference(
+        value = draftValue,
+        onValueChange = { value ->
+            isDragging = true
+            draftValue = value.roundToInt().toFloat()
+        },
+        title = title,
+        summary = summary,
+        valueText = stringResource(R.string.percent_value, draftValue.roundToInt()),
+        enabled = enabled,
+        valueRange =
+            ModulePreferences.MIN_RADIAL_ICON_SCALE_PERCENT.toFloat()..
+                ModulePreferences.MAX_RADIAL_ICON_SCALE_PERCENT.toFloat(),
+        steps =
+            ModulePreferences.MAX_RADIAL_ICON_SCALE_PERCENT -
+                ModulePreferences.MIN_RADIAL_ICON_SCALE_PERCENT -
+                1,
+        onValueChangeFinished = {
+            isDragging = false
+            val committed =
+                ModulePreferences.coerceRadialIconScalePercent(draftValue.roundToInt())
+            draftValue = committed.toFloat()
+            if (committed != confirmedValue) onCommit(committed)
+        },
+    )
 }
 
 @Composable

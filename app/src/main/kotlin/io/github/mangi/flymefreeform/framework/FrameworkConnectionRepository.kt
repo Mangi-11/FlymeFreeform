@@ -51,6 +51,25 @@ internal class FrameworkConnectionRepository {
     fun setRightCornerEnabled(enabled: Boolean) =
         updateSettings { it.copy(rightCornerEnabled = enabled) }
 
+    fun setRadialCircularIconsEnabled(enabled: Boolean) =
+        updateSettings { it.copy(radialCircularIconsEnabled = enabled) }
+
+    fun setRadialIconContentScalePercent(percent: Int) =
+        updateSettings {
+            it.copy(
+                radialIconContentScalePercent =
+                    ModulePreferences.coerceRadialIconScalePercent(percent),
+            )
+        }
+
+    fun setRadialIconMaskScalePercent(percent: Int) =
+        updateSettings {
+            it.copy(
+                radialIconMaskScalePercent =
+                    ModulePreferences.coerceRadialIconScalePercent(percent),
+            )
+        }
+
     fun setPinnedComponents(components: List<ComponentName>) =
         updateSettings {
             it.copy(

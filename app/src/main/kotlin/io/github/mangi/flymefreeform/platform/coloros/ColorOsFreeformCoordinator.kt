@@ -21,6 +21,7 @@ import io.github.mangi.flymefreeform.gesture.GestureAction
 import io.github.mangi.flymefreeform.hook.GestureEnvironmentState
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
 import io.github.mangi.flymefreeform.window.CornerRadialOverlayView
+import io.github.mangi.flymefreeform.window.RadialIconStyle
 import java.lang.reflect.Proxy
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -299,7 +300,18 @@ internal class ColorOsFreeformCoordinator(
             windowManager.addView(view, params)
             added = true
             overlay = view
-            view.begin(side, catalogSnapshot, x, y)
+            view.begin(
+                side = side,
+                catalog = catalogSnapshot,
+                iconStyle =
+                    RadialIconStyle.fromPercent(
+                        circularEnabled = lastSettings.radialCircularIconsEnabled,
+                        contentScalePercent = lastSettings.radialIconContentScalePercent,
+                        maskScalePercent = lastSettings.radialIconMaskScalePercent,
+                    ),
+                x = x,
+                y = y,
+            )
             view.post {
                 inputMethodManager?.hideSoftInputFromWindow(view.windowToken, 0)
             }

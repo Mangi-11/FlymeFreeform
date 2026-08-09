@@ -1,5 +1,6 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
+import android.annotation.SuppressLint
 import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
@@ -50,6 +51,7 @@ internal class ColorOsFreeformLauncher(
         }
 
     /** 隐藏 setter 只是补强；ColorOS 的两个 Bundle 参数才是不可缺少的启动协议。 */
+    @SuppressLint("BlockedPrivateApi")
     private fun createPlatformOptions(): Bundle? =
         try {
             ActivityOptions.makeBasic().let { options ->

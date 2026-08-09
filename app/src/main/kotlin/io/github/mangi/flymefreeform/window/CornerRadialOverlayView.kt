@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.os.SystemClock
 import android.view.Choreographer
@@ -55,10 +56,12 @@ internal class CornerRadialOverlayView(
         }
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val iconDestination = RectF()
+    private val iconClipPath = Path()
     private val reveal = CriticalDampedSpring(responseSeconds = REVEAL_RESPONSE_SECONDS)
     private val panel = CriticalDampedSpring()
     private val itemScales = MutableList(MAX_RADIAL_ITEMS) { CriticalDampedSpring(1f, 0.28f) }
     private var catalog = AppCatalogSnapshot()
+    private var radialIconStyle = RadialIconStyle.Default
     private var side = CornerSide.Right
     private var layout = RadialLayout(side, io.github.mangi.flymefreeform.gesture.GesturePoint(0f, 0f), 0f, emptyList())
     private var visualMetrics: AdaptiveOverlayMetrics? = null
@@ -94,9 +97,16 @@ internal class CornerRadialOverlayView(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
     }
 
-    fun begin(side: CornerSide, catalog: AppCatalogSnapshot, x: Float, y: Float) {
+    fun begin(
+        side: CornerSide,
+        catalog: AppCatalogSnapshot,
+        iconStyle: RadialIconStyle,
+        x: Float,
+        y: Float,
+    ) {
         this.side = side
         this.catalog = catalog
+        radialIconStyle = iconStyle
         panelScroller.abortAnimation()
         recycleVelocityTracker()
         panelMode = false
@@ -225,7 +235,6 @@ internal class CornerRadialOverlayView(
     private fun drawRadial(canvas: Canvas) {
         val radialMetrics = visualMetrics?.radial ?: return
         val plate = radialMetrics.plateDiameter
-        val icon = radialMetrics.iconDiameter
         layout.itemCenters.forEachIndexed { index, destination ->
             val revealSlot = if (index == layout.itemCenters.lastIndex) 0 else index + 1
             val stagger = (reveal.value * 1.38f - revealSlot * 0.055f).coerceIn(0f, 1f)
@@ -236,7 +245,24 @@ internal class CornerRadialOverlayView(
             val scale = itemScales[index].value * (0.55f + 0.45f * eased)
             val size = plate * scale
             if (index < catalog.radialApps.size) {
-                drawSystemBitmap(canvas, catalog.radialApps[index].icon, x, y, icon * scale)
+                if (radialIconStyle.circularEnabled) {
+                    drawRadialAppIcon(
+                        canvas = canvas,
+                        bitmap = catalog.radialApps[index].icon,
+                        x = x,
+                        y = y,
+                        plateDiameter = size,
+                        selected = index == selectedIndex,
+                    )
+                } else {
+                    drawSystemBitmap(
+                        canvas = canvas,
+                        bitmap = catalog.radialApps[index].icon,
+                        x = x,
+                        y = y,
+                        size = radialMetrics.iconDiameter * scale,
+                    )
+                }
             } else {
                 canvas.drawCircle(x, y, size / 2, if (index == selectedIndex) selectedPaint else platePaint)
                 val dotRadius = plate * MORE_DOT_RADIUS_FRACTION * scale
@@ -530,6 +556,31 @@ internal class CornerRadialOverlayView(
             y + drawHeight / 2,
         )
         canvas.drawBitmap(bitmap, null, iconDestination, iconPaint)
+    }
+
+    private fun drawRadialAppIcon(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        x: Float,
+        y: Float,
+        plateDiameter: Float,
+        selected: Boolean,
+    ) {
+        val maskDiameter = radialIconStyle.maskDiameter(plateDiameter)
+        val maskRadius = maskDiameter / 2f
+        canvas.drawCircle(x, y, maskRadius, if (selected) selectedPaint else platePaint)
+        iconClipPath.rewind()
+        iconClipPath.addCircle(x, y, maskRadius, Path.Direction.CW)
+        val checkpoint = canvas.save()
+        canvas.clipPath(iconClipPath)
+        drawSystemBitmap(
+            canvas = canvas,
+            bitmap = bitmap,
+            x = x,
+            y = y,
+            size = radialIconStyle.contentDiameter(plateDiameter),
+        )
+        canvas.restoreToCount(checkpoint)
     }
 
     private fun ellipsize(text: String, paint: Paint, maxWidth: Float): String {

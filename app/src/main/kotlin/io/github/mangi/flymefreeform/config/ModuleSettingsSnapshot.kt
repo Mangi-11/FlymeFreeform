@@ -9,12 +9,30 @@ internal data class ModuleSettingsSnapshot(
     val rightCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
     val pinsSaved: Boolean = false,
     val pinnedComponents: List<ComponentName> = emptyList(),
+    val radialIconContentScalePercent: Int =
+        ModulePreferences.DEFAULT_RADIAL_ICON_CONTENT_SCALE_PERCENT,
+    val radialIconMaskScalePercent: Int =
+        ModulePreferences.DEFAULT_RADIAL_ICON_MASK_SCALE_PERCENT,
+    val radialCircularIconsEnabled: Boolean =
+        ModulePreferences.DEFAULT_RADIAL_CIRCULAR_ICONS_ENABLED,
 ) {
     fun writeTo(editor: SharedPreferences.Editor): SharedPreferences.Editor {
         editor
             .putBoolean(ModulePreferences.KEY_MODULE_ENABLED, enabled)
             .putBoolean(ModulePreferences.KEY_LEFT_CORNER_ENABLED, leftCornerEnabled)
             .putBoolean(ModulePreferences.KEY_RIGHT_CORNER_ENABLED, rightCornerEnabled)
+            .putBoolean(
+                ModulePreferences.KEY_RADIAL_CIRCULAR_ICONS_ENABLED,
+                radialCircularIconsEnabled,
+            )
+            .putInt(
+                ModulePreferences.KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT,
+                ModulePreferences.coerceRadialIconScalePercent(radialIconContentScalePercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT,
+                ModulePreferences.coerceRadialIconScalePercent(radialIconMaskScalePercent),
+            )
         if (pinsSaved) {
             editor.putString(
                 ModulePreferences.KEY_CORNER_PINS,
@@ -43,6 +61,25 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_RIGHT_CORNER_ENABLED,
                     ModulePreferences.DEFAULT_CORNER_ENABLED,
                 )
+            val radialCircularIconsEnabled =
+                preferences.getBoolean(
+                    ModulePreferences.KEY_RADIAL_CIRCULAR_ICONS_ENABLED,
+                    ModulePreferences.DEFAULT_RADIAL_CIRCULAR_ICONS_ENABLED,
+                )
+            val radialIconContentScalePercent =
+                ModulePreferences.coerceRadialIconScalePercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT,
+                        ModulePreferences.DEFAULT_RADIAL_ICON_CONTENT_SCALE_PERCENT,
+                    ),
+                )
+            val radialIconMaskScalePercent =
+                ModulePreferences.coerceRadialIconScalePercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT,
+                        ModulePreferences.DEFAULT_RADIAL_ICON_MASK_SCALE_PERCENT,
+                    ),
+                )
             val pinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_PINS)
             val pins =
                 if (pinsSaved) {
@@ -52,7 +89,16 @@ internal data class ModuleSettingsSnapshot(
                 } else {
                     emptyList()
                 }
-            return ModuleSettingsSnapshot(enabled, leftEnabled, rightEnabled, pinsSaved, pins)
+            return ModuleSettingsSnapshot(
+                enabled = enabled,
+                leftCornerEnabled = leftEnabled,
+                rightCornerEnabled = rightEnabled,
+                pinsSaved = pinsSaved,
+                pinnedComponents = pins,
+                radialIconContentScalePercent = radialIconContentScalePercent,
+                radialIconMaskScalePercent = radialIconMaskScalePercent,
+                radialCircularIconsEnabled = radialCircularIconsEnabled,
+            )
         }
 
         fun encodePinnedComponents(components: List<ComponentName>): String =
