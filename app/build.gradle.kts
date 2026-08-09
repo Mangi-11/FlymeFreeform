@@ -52,7 +52,11 @@ java {
 }
 
 dependencies {
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
+    implementation(libs.miuix.preference)
     implementation(libs.miuix.ui)
+    testImplementation(libs.junit)
 }

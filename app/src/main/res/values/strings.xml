@@ -1,3 +1,67 @@
 <resources>
     <string name="app_name">Flyme 小窗</string>
+    <string name="screen_subtitle">ColorOS 自由窗交互实验</string>
+
+    <string name="section_runtime">运行状态</string>
+    <string name="framework_service_title">框架服务</string>
+    <string name="framework_status_waiting">等待连接</string>
+    <string name="framework_status_connected">已连接</string>
+    <string name="framework_status_incompatible">不兼容</string>
+    <string name="framework_status_error">连接异常</string>
+    <string name="framework_waiting_summary">请确认框架已启用本模块，并允许连接模块服务</string>
+    <string name="framework_connected_summary">%1$s %2$s · Service API %3$s</string>
+    <string name="framework_unknown_value">未知</string>
+    <string name="framework_api_too_old_summary">框架提供的 Service API 版本低于 102</string>
+    <string name="framework_remote_missing_summary">框架未提供远程配置能力</string>
+    <string name="framework_system_missing_summary">框架不支持 system_server 注入</string>
+    <string name="framework_multiple_services_summary">检测到多个框架服务；为避免配置分叉，已禁用写入</string>
+    <string name="framework_connection_failed_summary">无法读取框架信息，请检查 LSPosed 日志</string>
+    <string name="framework_write_failed_summary">配置未写入框架，请等待服务重新连接</string>
+    <string name="implementation_state_title">当前实现</string>
+    <string name="implementation_state_summary">左右下角斜向内上滑，连续选择后松手，以 ColorOS 自由窗启动应用</string>
+    <string name="implementation_state_value">角落扇形</string>
+    <string name="scope_title">模块作用域</string>
+    <string name="scope_complete">system_server、系统界面和桌面作用域均已启用</string>
+    <string name="scope_waiting">连接框架后检查所需作用域</string>
+    <string name="scope_missing">缺少：%1$s。点击向框架请求补全</string>
+    <string name="scope_requesting">等待框架确认作用域请求</string>
+    <string name="scope_request_failed">框架未完成作用域请求，点击重试</string>
+
+    <string name="section_settings">模块设置</string>
+    <string name="module_enabled_title">启用交互模块</string>
+    <string name="module_enabled_summary_on">已开启；快捷入口与交互能力可读取此状态</string>
+    <string name="module_enabled_summary_off">已关闭；模块保持无副作用</string>
+    <string name="module_enabled_summary_waiting">连接框架后才能更改</string>
+    <string name="module_enabled_summary_updating">正在写入框架配置</string>
+    <string name="module_enabled_summary_scope">补全所需作用域后才能更改</string>
+    <string name="left_corner_title">左下角手势</string>
+    <string name="left_corner_summary">从左下角斜向内上滑呼出扇形菜单</string>
+    <string name="right_corner_title">右下角手势</string>
+    <string name="right_corner_summary">从右下角斜向内上滑呼出扇形菜单</string>
+    <string name="radial_apps_title">扇形应用</string>
+    <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的六个应用</string>
+    <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>
+    <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
+
+    <string name="radial_apps_screen_title">扇形应用</string>
+    <string name="radial_apps_screen_subtitle">固定、替换和调整扇形顺序</string>
+    <string name="pinned_slots_title">固定槽位</string>
+    <string name="available_apps_title">可用应用</string>
+    <string name="available_apps_loading">正在读取应用</string>
+    <string name="available_apps_loading_summary">应用列表将在后台准备完成后显示</string>
+    <string name="pinned_slot_empty">空槽位</string>
+    <string name="pinned_slot_tap">槽位 %1$d · 点击选中后从下方选择应用</string>
+    <string name="pinned_slot_assigned">槽位 %1$d · 长按拖动可调整顺序</string>
+    <string name="pinned_slot_missing">槽位 %1$d · 应用已卸载或当前不可用</string>
+    <string name="remove_action">移除</string>
+    <string name="drag_reorder_action">长按并拖动排序</string>
+    <string name="select_slot_action">选择槽位 %1$d</string>
+    <string name="assign_app_action">放入槽位 %1$d</string>
+    <string name="back_action">返回</string>
+
+    <string name="section_about">说明</string>
+    <string name="implementation_principle_title">实现方式</string>
+    <string name="implementation_principle_summary">直接使用当前 ColorOS 已有自由窗能力，只调整快捷入口与交互编排，不另建窗口引擎。</string>
+    <string name="independent_project_title">非官方独立实现</string>
+    <string name="independent_project_summary">本项目与魅族、Flyme、OPPO、ColorOS 及其关联方无关，不代表任何官方授权或背书。</string>
 </resources>
