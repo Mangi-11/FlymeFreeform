@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val flymeFreeformVersionCode = providers.gradleProperty("flymeFreeformVersionCode").get().toInt()
@@ -52,10 +53,15 @@ java {
 }
 
 dependencies {
+    implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.navigation3.runtime)
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
+    implementation(libs.miuix.blur)
+    implementation(libs.miuix.navigation3.ui)
     implementation(libs.miuix.preference)
     implementation(libs.miuix.ui)
     testImplementation(libs.junit)

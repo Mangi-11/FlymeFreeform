@@ -1,8 +1,7 @@
 <resources>
     <string name="app_name">Flyme 小窗</string>
-    <string name="screen_subtitle">ColorOS 自由窗交互实验</string>
+    <string name="screen_settings_title">设置</string>
 
-    <string name="section_runtime">运行状态</string>
     <string name="framework_service_title">框架服务</string>
     <string name="framework_status_waiting">等待连接</string>
     <string name="framework_status_connected">已连接</string>
@@ -27,7 +26,6 @@
     <string name="scope_requesting">等待框架确认作用域请求</string>
     <string name="scope_request_failed">框架未完成作用域请求，点击重试</string>
 
-    <string name="section_settings">模块设置</string>
     <string name="module_enabled_title">启用交互模块</string>
     <string name="module_enabled_summary_on">已开启；快捷入口与交互能力可读取此状态</string>
     <string name="module_enabled_summary_off">已关闭；模块保持无副作用</string>
@@ -46,7 +44,6 @@
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>
     <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
 
-    <string name="section_window_interaction">小窗交互</string>
     <string name="outside_tap_close_title">点击小窗外关闭</string>
     <string name="outside_tap_close_summary">选择不执行、单击关闭或双击关闭；三种模式互斥</string>
     <string name="outside_tap_mode_disabled">不执行</string>
@@ -55,7 +52,6 @@
     <string name="handle_swipe_up_to_mini_title">快速上滑切换为迷你窗</string>
     <string name="handle_swipe_up_to_mini_summary">在普通小窗底部横条快速向上滑，切换为迷你小窗</string>
 
-    <string name="section_radial_appearance">扇形显示</string>
     <string name="radial_circular_icons_title">圆形扇形图标</string>
     <string name="radial_circular_icons_summary">将弧线展开的应用图标显示为可调圆形容器</string>
     <string name="radial_icon_content_scale_title">图标内容大小</string>
@@ -80,7 +76,6 @@
     <string name="assign_app_action">放入槽位 %1$d</string>
     <string name="back_action">返回</string>
 
-    <string name="section_about">说明</string>
     <string name="implementation_principle_title">实现方式</string>
     <string name="implementation_principle_summary">直接使用当前 ColorOS 已有自由窗能力，只调整快捷入口与交互编排，不另建窗口引擎。</string>
     <string name="independent_project_title">非官方独立实现</string>

@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -39,13 +41,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.github.mangi.flymefreeform.R
 import io.github.mangi.flymefreeform.apps.InstalledLauncherApp
 import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
+import io.github.mangi.flymefreeform.ui.component.TopBarBackdrop
+import io.github.mangi.flymefreeform.ui.component.captureForTopBar
+import io.github.mangi.flymefreeform.ui.component.rememberTopBarBackdrop
+import io.github.mangi.flymefreeform.ui.component.topBarContainerColor
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -58,7 +63,6 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.icon.basic.ArrowUpDown
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleClip
@@ -73,6 +77,8 @@ internal fun PinnedAppsScreen(
 ) {
     var selectedSlot by remember { mutableIntStateOf(state.settings.pinnedComponents.size.coerceAtMost(5)) }
     val scrollBehavior = MiuixScrollBehavior()
+    val backdrop = rememberTopBarBackdrop()
+    val topBarColor = topBarContainerColor(backdrop)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isWide = maxWidth >= WideWindowMinWidth
         val title = stringResource(R.string.radial_apps_screen_title)
@@ -83,20 +89,24 @@ internal fun PinnedAppsScreen(
                     .union(WindowInsets.displayCutout)
                     .union(WindowInsets.ime),
             topBar = {
-                if (isWide) {
-                    SmallTopAppBar(
-                        title = title,
-                        subtitle = stringResource(R.string.radial_apps_screen_subtitle),
-                        navigationIcon = navigationIcon,
-                        scrollBehavior = scrollBehavior,
-                    )
-                } else {
-                    TopAppBar(
-                        title = title,
-                        subtitle = stringResource(R.string.radial_apps_screen_subtitle),
-                        navigationIcon = navigationIcon,
-                        scrollBehavior = scrollBehavior,
-                    )
+                TopBarBackdrop(backdrop) {
+                    if (isWide) {
+                        SmallTopAppBar(
+                            title = title,
+                            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
+                            color = topBarColor,
+                            navigationIcon = navigationIcon,
+                            scrollBehavior = scrollBehavior,
+                        )
+                    } else {
+                        TopAppBar(
+                            title = title,
+                            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
+                            color = topBarColor,
+                            navigationIcon = navigationIcon,
+                            scrollBehavior = scrollBehavior,
+                        )
+                    }
                 }
             },
         ) { innerPadding ->
@@ -107,7 +117,8 @@ internal fun PinnedAppsScreen(
             val side = maxOf(ScreenHorizontalMargin, (safeWidth - ScreenContentMaxWidth) / 2)
             val pinned = state.settings.pinnedComponents
             val appByComponent = remember(apps) { apps.associateBy(InstalledLauncherApp::component) }
-            LazyColumn(
+            Box(modifier = Modifier.fillMaxSize().captureForTopBar(backdrop)) {
+                LazyColumn(
                 modifier =
                     Modifier
                         .fillMaxSize()
@@ -120,7 +131,7 @@ internal fun PinnedAppsScreen(
                         end = safeEnd + side,
                         bottom = innerPadding.calculateBottomPadding() + ScreenBottomSpacing,
                     ),
-            ) {
+                ) {
                 item(key = "slots_intro") {
                     Text(
                         text = stringResource(R.string.pinned_slots_title),
@@ -220,6 +231,7 @@ internal fun PinnedAppsScreen(
                             )
                         }
                     }
+                }
                 }
             }
         }
@@ -329,15 +341,11 @@ private fun AppIcon(app: InstalledLauncherApp) {
 
 @Composable
 private fun BackButton(onBack: () -> Unit) {
-    val direction = LocalLayoutDirection.current
     IconButton(onClick = onBack) {
         Icon(
-            imageVector = MiuixIcons.Basic.ArrowRight,
+            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
             contentDescription = stringResource(R.string.back_action),
-            modifier =
-                Modifier
-                    .size(width = 10.dp, height = 16.dp)
-                    .graphicsLayer { scaleX = if (direction == LayoutDirection.Ltr) -1f else 1f },
+            modifier = Modifier.size(24.dp),
         )
     }
 }
