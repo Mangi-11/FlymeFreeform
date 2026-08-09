@@ -88,8 +88,12 @@ internal class CornerRadialOverlayView(
     private var velocityTracker: VelocityTracker? = null
     private var dismissing = false
     private var dismissNotified = false
+    private var pendingRadialCommit: RadialAppEntry? = null
+    private var radialExitRunning = false
+    private var radialExitElapsedSeconds = 0f
+    private var radialExitVisuals = RadialExitMotion.sample(0f)
     private val timeout = Runnable(::requestDismiss)
-    private val dismissFallback = Runnable(::requestDismiss)
+    private val dismissFallback = Runnable(::completeRadialExit)
 
     init {
         updateColors(resources.configuration)
@@ -112,6 +116,10 @@ internal class CornerRadialOverlayView(
         panelMode = false
         dismissing = false
         dismissNotified = false
+        pendingRadialCommit = null
+        radialExitRunning = false
+        radialExitElapsedSeconds = 0f
+        radialExitVisuals = RadialExitMotion.sample(0f)
         selectedIndex = null
         panelScroll = 0f
         updateLayout()
@@ -163,7 +171,7 @@ internal class CornerRadialOverlayView(
         val selection = selectedIndex
         when {
             selection == null -> dismissAnimated()
-            selection < catalog.radialApps.size -> listener.onAppCommitted(catalog.radialApps[selection])
+            selection < catalog.radialApps.size -> dismissAnimated(catalog.radialApps[selection])
             else -> showMorePanel()
         }
     }
@@ -184,15 +192,21 @@ internal class CornerRadialOverlayView(
         scheduleFrame()
     }
 
-    fun dismissAnimated() {
+    fun dismissAnimated() = dismissAnimated(pendingCommit = null)
+
+    private fun dismissAnimated(pendingCommit: RadialAppEntry?) {
         if (dismissing) return
         dismissing = true
+        pendingRadialCommit = pendingCommit
         removeCallbacks(timeout)
-        reveal.retarget(0f)
-        panel.retarget(0f)
+        reveal.snapTo(reveal.value)
+        itemScales.forEach { it.snapTo(it.value) }
+        radialExitElapsedSeconds = 0f
+        radialExitVisuals = RadialExitMotion.sample(0f)
         if (!ValueAnimator.areAnimatorsEnabled()) {
-            requestDismiss()
+            completeRadialExit()
         } else {
+            radialExitRunning = true
             removeCallbacks(dismissFallback)
             postDelayed(dismissFallback, DISMISS_FALLBACK_MS)
             scheduleFrame()
@@ -226,55 +240,82 @@ internal class CornerRadialOverlayView(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val visualProgress = maxOf(reveal.value, panel.value)
-        scrimPaint.alpha = (MAX_SCRIM_ALPHA * visualProgress.coerceIn(0f, 1f)).toInt()
+        val scrimExitAlpha = if (panelMode) 1f else radialExitVisuals.scrimAlpha
+        scrimPaint.alpha =
+            (MAX_SCRIM_ALPHA * visualProgress.coerceIn(0f, 1f) * scrimExitAlpha).toInt()
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrimPaint)
-        if (reveal.value > 0.001f) drawRadial(canvas)
+        if (reveal.value > 0.001f && radialExitVisuals.contentAlpha > 0.001f) drawRadial(canvas)
         if (panel.value > 0.001f) drawPanel(canvas)
     }
 
     private fun drawRadial(canvas: Canvas) {
         val radialMetrics = visualMetrics?.radial ?: return
         val plate = radialMetrics.plateDiameter
-        layout.itemCenters.forEachIndexed { index, destination ->
-            val revealSlot = if (index == layout.itemCenters.lastIndex) 0 else index + 1
-            val stagger = (reveal.value * 1.38f - revealSlot * 0.055f).coerceIn(0f, 1f)
-            if (stagger <= 0f) return@forEachIndexed
-            val eased = 1f - (1f - stagger).pow(3)
-            val x = layout.origin.x + (destination.x - layout.origin.x) * eased
-            val y = layout.origin.y + (destination.y - layout.origin.y) * eased
-            val scale = itemScales[index].value * (0.55f + 0.45f * eased)
-            val size = plate * scale
-            if (index < catalog.radialApps.size) {
-                if (radialIconStyle.circularEnabled) {
-                    drawRadialAppIcon(
-                        canvas = canvas,
-                        bitmap = catalog.radialApps[index].icon,
-                        x = x,
-                        y = y,
-                        plateDiameter = size,
-                        selected = index == selectedIndex,
-                    )
+        val exitAlpha = radialExitVisuals.contentAlpha.coerceIn(0f, 1f)
+        val previousPlateAlpha = platePaint.alpha
+        val previousSelectedAlpha = selectedPaint.alpha
+        val previousMoreAlpha = morePaint.alpha
+        val previousIconAlpha = iconPaint.alpha
+        platePaint.alpha = (previousPlateAlpha * exitAlpha).toInt()
+        selectedPaint.alpha = (previousSelectedAlpha * exitAlpha).toInt()
+        morePaint.alpha = (previousMoreAlpha * exitAlpha).toInt()
+        iconPaint.alpha = (previousIconAlpha * exitAlpha).toInt()
+        try {
+            layout.itemCenters.forEachIndexed { index, destination ->
+                val revealSlot = if (index == layout.itemCenters.lastIndex) 0 else index + 1
+                val stagger = (reveal.value * 1.38f - revealSlot * 0.055f).coerceIn(0f, 1f)
+                if (stagger <= 0f) return@forEachIndexed
+                val eased = 1f - (1f - stagger).pow(3)
+                val x = layout.origin.x + (destination.x - layout.origin.x) * eased
+                val y = layout.origin.y + (destination.y - layout.origin.y) * eased
+                val scale =
+                    itemScales[index].value *
+                        (0.55f + 0.45f * eased) *
+                        radialExitVisuals.contentScale
+                val size = plate * scale
+                if (index < catalog.radialApps.size) {
+                    if (radialIconStyle.circularEnabled) {
+                        drawRadialAppIcon(
+                            canvas = canvas,
+                            bitmap = catalog.radialApps[index].icon,
+                            x = x,
+                            y = y,
+                            plateDiameter = size,
+                            selected = index == selectedIndex,
+                        )
+                    } else {
+                        drawSystemBitmap(
+                            canvas = canvas,
+                            bitmap = catalog.radialApps[index].icon,
+                            x = x,
+                            y = y,
+                            size = radialMetrics.iconDiameter * scale,
+                        )
+                    }
                 } else {
-                    drawSystemBitmap(
-                        canvas = canvas,
-                        bitmap = catalog.radialApps[index].icon,
-                        x = x,
-                        y = y,
-                        size = radialMetrics.iconDiameter * scale,
-                    )
-                }
-            } else {
-                canvas.drawCircle(x, y, size / 2, if (index == selectedIndex) selectedPaint else platePaint)
-                val dotRadius = plate * MORE_DOT_RADIUS_FRACTION * scale
-                for (offset in -1..1) {
+                    val moreDiameter = radialIconStyle.moreDiameter(size)
                     canvas.drawCircle(
-                        x + offset * plate * MORE_DOT_SPACING_FRACTION * scale,
+                        x,
                         y,
-                        dotRadius,
-                        morePaint,
+                        moreDiameter / 2,
+                        if (index == selectedIndex) selectedPaint else platePaint,
                     )
+                    val dotRadius = moreDiameter * MORE_DOT_RADIUS_FRACTION
+                    for (offset in -1..1) {
+                        canvas.drawCircle(
+                            x + offset * moreDiameter * MORE_DOT_SPACING_FRACTION,
+                            y,
+                            dotRadius,
+                            morePaint,
+                        )
+                    }
                 }
             }
+        } finally {
+            platePaint.alpha = previousPlateAlpha
+            selectedPaint.alpha = previousSelectedAlpha
+            morePaint.alpha = previousMoreAlpha
+            iconPaint.alpha = previousIconAlpha
         }
     }
 
@@ -412,17 +453,44 @@ internal class CornerRadialOverlayView(
             if (lastFrameNanos == 0L) FIRST_FRAME_SECONDS
             else ((frameTimeNanos - lastFrameNanos) / 1_000_000_000f).coerceAtMost(0.05f)
         lastFrameNanos = frameTimeNanos
+        var radialExitCompleted = false
         if (ValueAnimator.areAnimatorsEnabled()) {
-            reveal.step(delta)
-            panel.step(delta)
-            itemScales.forEach { it.step(delta) }
+            if (radialExitRunning) {
+                radialExitElapsedSeconds += delta
+                radialExitVisuals =
+                    RadialExitMotion.sample(
+                        radialExitElapsedSeconds / RadialExitMotion.DURATION_SECONDS,
+                    )
+                if (radialExitElapsedSeconds >= RadialExitMotion.DURATION_SECONDS) {
+                    radialExitRunning = false
+                    radialExitCompleted = true
+                }
+            } else {
+                reveal.step(delta)
+                panel.step(delta)
+                itemScales.forEach { it.step(delta) }
+            }
         } else {
-            reveal.snapTo(reveal.target)
-            panel.snapTo(panel.target)
-            itemScales.forEach { it.snapTo(it.target) }
+            if (radialExitRunning) {
+                radialExitVisuals = RadialExitMotion.sample(1f)
+                radialExitRunning = false
+                radialExitCompleted = true
+            } else {
+                reveal.snapTo(reveal.target)
+                panel.snapTo(panel.target)
+                itemScales.forEach { it.snapTo(it.target) }
+            }
         }
         invalidate()
-        val running = !reveal.isAtRest || !panel.isAtRest || itemScales.any { !it.isAtRest }
+        if (radialExitCompleted) {
+            completeRadialExit()
+            return
+        }
+        val running =
+            radialExitRunning ||
+                !reveal.isAtRest ||
+                !panel.isAtRest ||
+                itemScales.any { !it.isAtRest }
         if (running) {
             scheduleFrame()
         } else {
@@ -627,6 +695,21 @@ internal class CornerRadialOverlayView(
         listener.onDismissRequested()
     }
 
+    private fun completeRadialExit() {
+        if (dismissNotified) return
+        radialExitRunning = false
+        removeCallbacks(dismissFallback)
+        val pendingCommit = pendingRadialCommit
+        pendingRadialCommit = null
+        if (pendingCommit == null) {
+            requestDismiss()
+        } else {
+            dismissNotified = true
+            removeCallbacks(timeout)
+            listener.onAppCommitted(pendingCommit)
+        }
+    }
+
     private companion object {
         const val MAX_RADIAL_ITEMS = 7
         const val MAX_SCRIM_ALPHA = 105
@@ -635,7 +718,7 @@ internal class CornerRadialOverlayView(
         const val TICK_INTERVAL_MS = 55L
         const val GESTURE_TIMEOUT_MS = 5_000L
         const val PANEL_TIMEOUT_MS = 15_000L
-        const val DISMISS_FALLBACK_MS = 500L
+        const val DISMISS_FALLBACK_MS = 400L
         const val REVEAL_RESPONSE_SECONDS = 0.12f
         const val FIRST_FRAME_SECONDS = 1f / 120f
     }

@@ -29,6 +29,7 @@ class RadialIconStyleTest {
 
         assertEquals(80f, style.maskDiameter(100f), 0.001f)
         assertEquals(96f, style.contentDiameter(100f), 0.001f)
+        assertEquals(80f, style.moreDiameter(100f), 0.001f)
     }
 
     @Test
@@ -56,5 +57,6 @@ class RadialIconStyleTest {
         assertEquals(false, style.circularEnabled)
         assertEquals(100f, style.maskDiameter(100f), 0.001f)
         assertEquals(120f, style.contentDiameter(100f), 0.001f)
+        assertEquals(100f, style.moreDiameter(100f), 0.001f)
     }
 }

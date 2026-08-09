@@ -12,6 +12,9 @@ internal class RadialIconStyle private constructor(
 
     fun contentDiameter(plateDiameter: Float): Float = maskDiameter(plateDiameter) * contentScale
 
+    fun moreDiameter(plateDiameter: Float): Float =
+        if (circularEnabled) maskDiameter(plateDiameter) else plateDiameter
+
     companion object {
         fun fromPercent(
             circularEnabled: Boolean,
