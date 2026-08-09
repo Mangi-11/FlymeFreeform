@@ -46,6 +46,15 @@
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>
     <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
 
+    <string name="section_window_interaction">小窗交互</string>
+    <string name="outside_tap_close_title">点击小窗外关闭</string>
+    <string name="outside_tap_close_summary">选择不执行、单击关闭或双击关闭；三种模式互斥</string>
+    <string name="outside_tap_mode_disabled">不执行</string>
+    <string name="outside_tap_mode_single">单击关闭</string>
+    <string name="outside_tap_mode_double">双击关闭</string>
+    <string name="handle_swipe_up_to_mini_title">快速上滑切换为迷你窗</string>
+    <string name="handle_swipe_up_to_mini_summary">在普通小窗底部横条快速向上滑，切换为迷你小窗</string>
+
     <string name="section_radial_appearance">扇形显示</string>
     <string name="radial_circular_icons_title">圆形扇形图标</string>
     <string name="radial_circular_icons_summary">将弧线展开的应用图标显示为可调圆形容器</string>

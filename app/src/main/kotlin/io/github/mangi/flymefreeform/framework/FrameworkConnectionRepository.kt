@@ -6,6 +6,7 @@ import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
+import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import java.util.IdentityHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -77,6 +78,12 @@ internal class FrameworkConnectionRepository {
                     ModulePreferences.coerceRadialIconScalePercent(percent),
             )
         }
+
+    fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
+        updateSettings { it.copy(outsideTapCloseMode = mode) }
+
+    fun setHandleSwipeUpToMiniEnabled(enabled: Boolean) =
+        updateSettings { it.copy(handleSwipeUpToMiniEnabled = enabled) }
 
     fun setPinnedComponents(components: List<ComponentName>) =
         updateSettings {

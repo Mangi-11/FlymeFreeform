@@ -16,6 +16,10 @@ internal data class ModuleSettingsSnapshot(
         ModulePreferences.DEFAULT_RADIAL_ICON_MASK_SCALE_PERCENT,
     val radialCircularIconsEnabled: Boolean =
         ModulePreferences.DEFAULT_RADIAL_CIRCULAR_ICONS_ENABLED,
+    val outsideTapCloseMode: OutsideTapCloseMode =
+        ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
+    val handleSwipeUpToMiniEnabled: Boolean =
+        ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
 ) {
     fun writeTo(editor: SharedPreferences.Editor): SharedPreferences.Editor {
         editor
@@ -37,6 +41,14 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT,
                 ModulePreferences.coerceRadialIconScalePercent(radialIconMaskScalePercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
+                outsideTapCloseMode.storedValue,
+            )
+            .putBoolean(
+                ModulePreferences.KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
+                handleSwipeUpToMiniEnabled,
             )
         if (pinsSaved) {
             editor.putString(
@@ -92,6 +104,18 @@ internal data class ModuleSettingsSnapshot(
                         ModulePreferences.DEFAULT_RADIAL_ICON_MASK_SCALE_PERCENT,
                     ),
                 )
+            val outsideTapCloseMode =
+                OutsideTapCloseMode.fromStoredValue(
+                    preferences.getInt(
+                        ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
+                        ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE.storedValue,
+                    ),
+                )
+            val handleSwipeUpToMiniEnabled =
+                preferences.getBoolean(
+                    ModulePreferences.KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
+                    ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
+                )
             val pinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_PINS)
             val pins =
                 if (pinsSaved) {
@@ -111,6 +135,8 @@ internal data class ModuleSettingsSnapshot(
                 radialIconContentScalePercent = radialIconContentScalePercent,
                 radialIconMaskScalePercent = radialIconMaskScalePercent,
                 radialCircularIconsEnabled = radialCircularIconsEnabled,
+                outsideTapCloseMode = outsideTapCloseMode,
+                handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
             )
         }
 

@@ -38,17 +38,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.mangi.flymefreeform.R
 import io.github.mangi.flymefreeform.config.ModulePreferences
+import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionIssue
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionStatus
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -64,6 +67,8 @@ internal fun ControlScreen(
     onRadialCircularIconsEnabledChange: (Boolean) -> Unit,
     onRadialIconContentScaleChange: (Int) -> Unit,
     onRadialIconMaskScaleChange: (Int) -> Unit,
+    onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
+    onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
     onManageApps: () -> Unit,
 ) {
@@ -127,6 +132,14 @@ internal fun ControlScreen(
                         onManageApps,
                     )
                 }
+                item(key = "window_interaction") {
+                    WindowInteractionSection(
+                        state = state,
+                        onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
+                        onHandleSwipeUpToMiniEnabledChange =
+                            onHandleSwipeUpToMiniEnabledChange,
+                    )
+                }
                 item(key = "radial_appearance") {
                     RadialAppearanceSection(
                         state = state,
@@ -144,6 +157,42 @@ internal fun ControlScreen(
                 rangeDp = rangeDp,
                 leftEnabled = state.settings.leftCornerEnabled,
                 rightEnabled = state.settings.rightCornerEnabled,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WindowInteractionSection(
+    state: FrameworkConnectionState,
+    onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
+    onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+) {
+    val modes = OutsideTapCloseMode.entries
+    val items =
+        listOf(
+            DropdownItem(text = stringResource(R.string.outside_tap_mode_disabled)),
+            DropdownItem(text = stringResource(R.string.outside_tap_mode_single)),
+            DropdownItem(text = stringResource(R.string.outside_tap_mode_double)),
+        )
+    Section(title = stringResource(R.string.section_window_interaction)) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            OverlaySpinnerPreference(
+                items = items,
+                selectedIndex = modes.indexOf(state.settings.outsideTapCloseMode),
+                title = stringResource(R.string.outside_tap_close_title),
+                summary = stringResource(R.string.outside_tap_close_summary),
+                enabled = state.canChangeSettings,
+                onSelectedIndexChange = { index ->
+                    modes.getOrNull(index)?.let(onOutsideTapCloseModeChange)
+                },
+            )
+            SwitchPreference(
+                checked = state.settings.handleSwipeUpToMiniEnabled,
+                onCheckedChange = onHandleSwipeUpToMiniEnabledChange,
+                title = stringResource(R.string.handle_swipe_up_to_mini_title),
+                summary = stringResource(R.string.handle_swipe_up_to_mini_summary),
+                enabled = state.canChangeSettings,
             )
         }
     }

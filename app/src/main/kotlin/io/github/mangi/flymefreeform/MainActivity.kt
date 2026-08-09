@@ -49,6 +49,9 @@ class MainActivity : ComponentActivity() {
                                 repository::setRadialIconContentScalePercent,
                             onRadialIconMaskScaleChange =
                                 repository::setRadialIconMaskScalePercent,
+                            onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
+                            onHandleSwipeUpToMiniEnabledChange =
+                                repository::setHandleSwipeUpToMiniEnabled,
                             onRequestScopes = repository::requestMissingScopes,
                             onManageApps = { screen = Screen.PinnedApps },
                         )

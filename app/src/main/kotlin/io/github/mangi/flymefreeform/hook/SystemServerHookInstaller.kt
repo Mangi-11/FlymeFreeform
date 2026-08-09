@@ -13,6 +13,8 @@ internal class SystemServerHookInstaller(
     private val bound = AtomicBoolean(false)
 
     fun install(classLoader: ClassLoader) {
+        OutsideTapCloseHookInstaller(module, configuration).install(classLoader)
+        HandleSwipeUpHookInstaller(module, configuration).install(classLoader)
         try {
             val controllerClass = classLoader.loadClass(FLEXIBLE_TASK_CONTROLLER_CLASS)
             val systemReady = controllerClass.getDeclaredMethod("systemReady", Boolean::class.javaPrimitiveType)

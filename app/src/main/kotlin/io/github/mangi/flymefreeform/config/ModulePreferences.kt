@@ -11,12 +11,16 @@ internal object ModulePreferences {
     const val KEY_RADIAL_CIRCULAR_ICONS_ENABLED = "radial_circular_icons_enabled"
     const val KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT = "radial_icon_content_scale_percent"
     const val KEY_RADIAL_ICON_MASK_SCALE_PERCENT = "radial_icon_mask_scale_percent"
+    const val KEY_OUTSIDE_TAP_CLOSE_MODE = "outside_tap_close_mode_v1"
+    const val KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED = "handle_swipe_up_to_mini_enabled"
     const val DEFAULT_ENABLED = false
     const val DEFAULT_CORNER_ENABLED = true
     const val DEFAULT_CORNER_TRIGGER_RANGE_DP = 84
     const val DEFAULT_RADIAL_CIRCULAR_ICONS_ENABLED = true
     const val DEFAULT_RADIAL_ICON_CONTENT_SCALE_PERCENT = 120
     const val DEFAULT_RADIAL_ICON_MASK_SCALE_PERCENT = 100
+    val DEFAULT_OUTSIDE_TAP_CLOSE_MODE = OutsideTapCloseMode.SingleTap
+    const val DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED = true
     const val MIN_RADIAL_ICON_SCALE_PERCENT = 80
     const val MAX_RADIAL_ICON_SCALE_PERCENT = 120
     const val MIN_CORNER_TRIGGER_RANGE_DP = 24
