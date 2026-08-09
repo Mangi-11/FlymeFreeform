@@ -55,7 +55,7 @@ internal class CornerRadialOverlayView(
         }
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val iconDestination = RectF()
-    private val reveal = CriticalDampedSpring()
+    private val reveal = CriticalDampedSpring(responseSeconds = REVEAL_RESPONSE_SECONDS)
     private val panel = CriticalDampedSpring()
     private val itemScales = MutableList(MAX_RADIAL_ITEMS) { CriticalDampedSpring(1f, 0.28f) }
     private var catalog = AppCatalogSnapshot()
@@ -83,7 +83,10 @@ internal class CornerRadialOverlayView(
     private val maximumFlingVelocity = viewConfiguration.scaledMaximumFlingVelocity
     private val panelScroller = OverScroller(context)
     private var velocityTracker: VelocityTracker? = null
-    private val timeout = Runnable { listener.onDismissRequested() }
+    private var dismissing = false
+    private var dismissNotified = false
+    private val timeout = Runnable(::requestDismiss)
+    private val dismissFallback = Runnable(::requestDismiss)
 
     init {
         updateColors(resources.configuration)
@@ -97,6 +100,8 @@ internal class CornerRadialOverlayView(
         panelScroller.abortAnimation()
         recycleVelocityTracker()
         panelMode = false
+        dismissing = false
+        dismissNotified = false
         selectedIndex = null
         panelScroll = 0f
         updateLayout()
@@ -120,7 +125,7 @@ internal class CornerRadialOverlayView(
         removeCallbacks(timeout)
         postDelayed(timeout, GESTURE_TIMEOUT_MS)
         val revealDistance = layout.radius * 0.72f
-        reveal.snapTo(RadialGeometry.progress(layout, x, y, revealDistance))
+        reveal.retarget(RadialGeometry.progress(layout, x, y, revealDistance))
         val next =
             RadialGeometry.selection(
                 layout = layout,
@@ -170,12 +175,16 @@ internal class CornerRadialOverlayView(
     }
 
     fun dismissAnimated() {
+        if (dismissing) return
+        dismissing = true
         removeCallbacks(timeout)
         reveal.retarget(0f)
         panel.retarget(0f)
         if (!ValueAnimator.areAnimatorsEnabled()) {
-            listener.onDismissRequested()
+            requestDismiss()
         } else {
+            removeCallbacks(dismissFallback)
+            postDelayed(dismissFallback, DISMISS_FALLBACK_MS)
             scheduleFrame()
         }
     }
@@ -183,7 +192,7 @@ internal class CornerRadialOverlayView(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (oldw != 0 && (oldw != w || oldh != h)) {
-            listener.onDismissRequested()
+            requestDismiss()
             return
         }
         updateLayout()
@@ -284,7 +293,7 @@ internal class CornerRadialOverlayView(
                 panelScroller.abortAnimation()
                 recycleVelocityTracker()
                 if (!panelRect.contains(event.x, event.y)) {
-                    listener.onDismissRequested()
+                    requestDismiss()
                     return true
                 }
                 velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
@@ -357,7 +366,7 @@ internal class CornerRadialOverlayView(
 
     override fun dispatchKeyEventPreIme(event: KeyEvent): Boolean {
         if (panelMode && event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-            listener.onDismissRequested()
+            requestDismiss()
             return true
         }
         return super.dispatchKeyEventPreIme(event)
@@ -365,7 +374,7 @@ internal class CornerRadialOverlayView(
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (panelMode && event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-            listener.onDismissRequested()
+            requestDismiss()
             return true
         }
         return super.dispatchKeyEvent(event)
@@ -374,7 +383,7 @@ internal class CornerRadialOverlayView(
     override fun doFrame(frameTimeNanos: Long) {
         frameScheduled = false
         val delta =
-            if (lastFrameNanos == 0L) 0f
+            if (lastFrameNanos == 0L) FIRST_FRAME_SECONDS
             else ((frameTimeNanos - lastFrameNanos) / 1_000_000_000f).coerceAtMost(0.05f)
         lastFrameNanos = frameTimeNanos
         if (ValueAnimator.areAnimatorsEnabled()) {
@@ -392,12 +401,13 @@ internal class CornerRadialOverlayView(
             scheduleFrame()
         } else {
             lastFrameNanos = 0L
-            if (reveal.value == 0f && panel.value == 0f) listener.onDismissRequested()
+            if (reveal.value == 0f && panel.value == 0f) requestDismiss()
         }
     }
 
     override fun onDetachedFromWindow() {
         removeCallbacks(timeout)
+        removeCallbacks(dismissFallback)
         panelScroller.abortAnimation()
         recycleVelocityTracker()
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this)
@@ -558,6 +568,14 @@ internal class CornerRadialOverlayView(
         labelPaint.color = if (dark) Color.rgb(242, 242, 244) else Color.rgb(35, 35, 38)
     }
 
+    private fun requestDismiss() {
+        if (dismissNotified) return
+        dismissNotified = true
+        removeCallbacks(timeout)
+        removeCallbacks(dismissFallback)
+        listener.onDismissRequested()
+    }
+
     private companion object {
         const val MAX_RADIAL_ITEMS = 7
         const val MAX_SCRIM_ALPHA = 105
@@ -566,5 +584,8 @@ internal class CornerRadialOverlayView(
         const val TICK_INTERVAL_MS = 55L
         const val GESTURE_TIMEOUT_MS = 5_000L
         const val PANEL_TIMEOUT_MS = 15_000L
+        const val DISMISS_FALLBACK_MS = 500L
+        const val REVEAL_RESPONSE_SECONDS = 0.12f
+        const val FIRST_FRAME_SECONDS = 1f / 120f
     }
 }

@@ -156,7 +156,14 @@ internal class ColorOsFreeformCoordinator(
         if (!pointerRegistered) return
         val copy = MotionEvent.obtain(event)
         if (event.actionMasked != MotionEvent.ACTION_MOVE) {
-            handler.post { processPointerEvent(copy) }
+            val precedingMove =
+                synchronized(pointerQueueLock) {
+                    pendingMove.also { pendingMove = null }
+                }
+            handler.post {
+                precedingMove?.let(::processPointerEvent)
+                processPointerEvent(copy)
+            }
             return
         }
         var shouldPost = false
@@ -309,6 +316,13 @@ internal class ColorOsFreeformCoordinator(
     }
 
     override fun onAppCommitted(entry: RadialAppEntry) {
+        activeEnvironmentApproved = false
+        gestureEngine.cancel()
+        removeOverlay()
+        handler.post { launchCommittedApp(entry) }
+    }
+
+    private fun launchCommittedApp(entry: RadialAppEntry) {
         when (val result = launcher.launch(entry.component)) {
             FreeformLaunchResult.Started -> Unit
             FreeformLaunchResult.TargetUnavailable ->
@@ -316,7 +330,6 @@ internal class ColorOsFreeformCoordinator(
             is FreeformLaunchResult.Failed ->
                 logger(Log.WARN, result.diagnosticCode, result.cause)
         }
-        removeOverlay()
     }
 
     override fun onMorePanelRequested() {
@@ -333,6 +346,8 @@ internal class ColorOsFreeformCoordinator(
     }
 
     override fun onDismissRequested() {
+        activeEnvironmentApproved = false
+        gestureEngine.cancel()
         removeOverlay()
     }
 
