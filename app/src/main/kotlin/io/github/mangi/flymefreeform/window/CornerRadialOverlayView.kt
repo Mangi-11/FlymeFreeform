@@ -129,7 +129,7 @@ internal class CornerRadialOverlayView(
         itemScales.forEach { it.snapTo(1f) }
         post {
             if (isAttachedToWindow) {
-                performHapticFeedback(HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE)
+                performHapticFeedback(HapticFeedbackConstants.GESTURE_START)
             }
         }
         removeCallbacks(timeout)
@@ -158,7 +158,7 @@ internal class CornerRadialOverlayView(
             itemScales.forEachIndexed { index, spring -> spring.retarget(if (index == next) 1.2f else 1f) }
             val now = SystemClock.uptimeMillis()
             if (next != null && now - lastTickUptime >= TICK_INTERVAL_MS) {
-                performHapticFeedback(HapticFeedbackConstants.SEGMENT_FREQUENT_TICK)
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 lastTickUptime = now
             }
         }
@@ -715,7 +715,7 @@ internal class CornerRadialOverlayView(
         const val MAX_SCRIM_ALPHA = 105
         const val MORE_DOT_RADIUS_FRACTION = 0.052f
         const val MORE_DOT_SPACING_FRACTION = 0.17f
-        const val TICK_INTERVAL_MS = 55L
+        const val TICK_INTERVAL_MS = 80L
         const val GESTURE_TIMEOUT_MS = 5_000L
         const val PANEL_TIMEOUT_MS = 15_000L
         const val DISMISS_FALLBACK_MS = 400L
