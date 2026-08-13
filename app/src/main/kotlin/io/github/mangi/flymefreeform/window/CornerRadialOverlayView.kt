@@ -42,17 +42,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.AbstractComposeView
@@ -78,7 +79,10 @@ import io.github.mangi.flymefreeform.platform.coloros.RadialAppEntry
 import io.github.mangi.flymefreeform.ui.theme.CornerOverlayTheme
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.squircle.addSquircleRect
+import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
@@ -265,8 +269,10 @@ internal class CornerRadialOverlayView(
     ) {
         val entryAlpha = remember { Animatable(0f) }
         val panelProgress = remember { Animatable(0f) }
+        val panelContentProgress = remember { Animatable(0f) }
         val radialHandoffProgress = remember { Animatable(0f) }
         val exitProgress = remember { Animatable(0f) }
+        val panelInputEnabled = remember { mutableStateOf(false) }
         val itemScales =
             remember(layout.itemCenters.size) {
                 List(layout.itemCenters.size) { Animatable(1f) }
@@ -299,9 +305,12 @@ internal class CornerRadialOverlayView(
         }
         LaunchedEffect(panelModeState.value) {
             if (panelModeState.value) {
+                panelInputEnabled.value = false
                 if (!animationsEnabled) {
                     radialHandoffProgress.snapTo(1f)
                     panelProgress.snapTo(1f)
+                    panelContentProgress.snapTo(1f)
+                    panelInputEnabled.value = true
                 } else {
                     coroutineScope {
                         launch {
@@ -309,7 +318,7 @@ internal class CornerRadialOverlayView(
                                 targetValue = 1f,
                                 animationSpec =
                                     tween(
-                                        durationMillis = RadialExitMotion.DURATION_MILLIS.toInt(),
+                                        durationMillis = RadialHandoffMotion.DURATION_MILLIS.toInt(),
                                         easing = LinearEasing,
                                     ),
                             )
@@ -318,11 +327,24 @@ internal class CornerRadialOverlayView(
                             panelProgress.animateTo(
                                 targetValue = 1f,
                                 animationSpec =
-                                    spring(
-                                        dampingRatio = 1f,
-                                        stiffness = PANEL_EXPAND_STIFFNESS,
+                                    folmeSpring(
+                                        damping = PANEL_EXPAND_DAMPING,
+                                        response = PANEL_EXPAND_RESPONSE_SECONDS,
+                                        visibilityThreshold = PANEL_VISIBILITY_THRESHOLD,
                                     ),
                             )
+                        }
+                        launch {
+                            panelContentProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec =
+                                    tween(
+                                        durationMillis = PANEL_CONTENT_FADE_MILLIS,
+                                        delayMillis = PANEL_CONTENT_DELAY_MILLIS,
+                                        easing = LinearOutSlowInEasing,
+                                    ),
+                            )
+                            panelInputEnabled.value = true
                         }
                     }
                 }
@@ -375,7 +397,13 @@ internal class CornerRadialOverlayView(
                                 }
                             },
                 )
-                MoreAppsPanel(metrics.panel, panelProgress, animationsEnabled)
+                MoreAppsPanel(
+                    metrics = metrics.panel,
+                    panelProgress = panelProgress,
+                    contentProgress = panelContentProgress,
+                    inputEnabled = panelInputEnabled.value,
+                    animationsEnabled = animationsEnabled,
+                )
             }
         }
     }
@@ -579,9 +607,12 @@ internal class CornerRadialOverlayView(
     private fun MoreAppsPanel(
         metrics: PanelVisualMetrics,
         panelProgress: Animatable<Float, *>,
+        contentProgress: Animatable<Float, *>,
+        inputEnabled: Boolean,
         animationsEnabled: Boolean,
     ) {
         val density = androidx.compose.ui.platform.LocalDensity.current
+        val squircleEnabled = isSquircleEnabled()
         val panelColor = MiuixTheme.colorScheme.surface.copy(alpha = PANEL_SURFACE_ALPHA)
         val labelColor = MiuixTheme.colorScheme.onSurface
         val bounds = metrics.bounds
@@ -595,25 +626,21 @@ internal class CornerRadialOverlayView(
         val labelGap = with(density) { (metrics.labelTopOffset - metrics.iconDiameter / 2f).toDp() }
         val labelSize = with(density) { metrics.labelTextSize.toSp() }
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(metrics.columns),
+        Box(
             modifier =
                 Modifier
                     .absoluteOffset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
                     .requiredSize(width = width, height = height)
-                    .graphicsLayer {
-                        val progress = if (animationsEnabled) panelProgress.value.coerceIn(0f, 1f) else 1f
-                        alpha = progress
-                        scaleX = progress
-                        scaleY = progress
-                        transformOrigin =
-                            TransformOrigin(
-                                pivotFractionX = if (side == CornerSide.Left) 0f else 1f,
-                                pivotFractionY = 1f,
-                            )
-                    }
+                    .panelReveal(
+                        progress = {
+                            if (animationsEnabled) panelProgress.value else 1f
+                        },
+                        seedSize = metrics.iconDiameter,
+                        cornerRadius = metrics.cornerRadius,
+                        anchorOnLeft = side == CornerSide.Left,
+                        squircleEnabled = squircleEnabled,
+                    )
                     .squircleSurface(color = panelColor, cornerRadius = cornerRadius)
-                    .clipToBounds()
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
@@ -621,44 +648,68 @@ internal class CornerRadialOverlayView(
                             waitForUpOrCancellation()
                         }
                     },
-            contentPadding =
-                PaddingValues(
-                    horizontal = horizontalPadding,
-                    vertical = verticalPadding,
-                ),
-            verticalArrangement = Arrangement.Top,
         ) {
-            items(
-                items = catalog.panelApps,
-                key = { entry -> entry.component.flattenToShortString() },
-            ) { entry ->
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(cellHeight)
-                            .clickable { listener.onAppCommitted(entry) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    panelImages[entry.component]?.let { image ->
-                        Image(
-                            bitmap = image,
-                            contentDescription = null,
-                            modifier = Modifier.size(iconSize),
-                            filterQuality = FilterQuality.High,
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(metrics.columns),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val progress =
+                                if (animationsEnabled) {
+                                    contentProgress.value.coerceIn(0f, 1f)
+                                } else {
+                                    1f
+                                }
+                            alpha = progress
+                            translationY =
+                                (1f - progress) *
+                                    metrics.iconDiameter *
+                                    PANEL_CONTENT_TRANSLATION_FRACTION
+                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                        },
+                contentPadding =
+                    PaddingValues(
+                        horizontal = horizontalPadding,
+                        vertical = verticalPadding,
+                    ),
+                verticalArrangement = Arrangement.Top,
+                userScrollEnabled = inputEnabled,
+            ) {
+                items(
+                    items = catalog.panelApps,
+                    key = { entry -> entry.component.flattenToShortString() },
+                ) { entry ->
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(cellHeight)
+                                .clickable(enabled = inputEnabled) {
+                                    listener.onAppCommitted(entry)
+                                },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        panelImages[entry.component]?.let { image ->
+                            Image(
+                                bitmap = image,
+                                contentDescription = null,
+                                modifier = Modifier.size(iconSize),
+                                filterQuality = FilterQuality.High,
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(labelGap))
+                        Text(
+                            text = entry.label,
+                            modifier = Modifier.fillMaxWidth(),
+                            color = labelColor,
+                            fontSize = labelSize,
+                            letterSpacing = 0.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Spacer(modifier = Modifier.height(labelGap))
-                    Text(
-                        text = entry.label,
-                        modifier = Modifier.fillMaxWidth(),
-                        color = labelColor,
-                        fontSize = labelSize,
-                        letterSpacing = 0.sp,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }
@@ -922,7 +973,12 @@ internal class CornerRadialOverlayView(
         const val MORE_DOT_SPACING_FRACTION = 0.17f
         const val SELECTED_SCALE = 1.2f
         const val SELECTION_SPRING_STIFFNESS = 500f
-        const val PANEL_EXPAND_STIFFNESS = 340f
+        const val PANEL_EXPAND_DAMPING = 0.9f
+        const val PANEL_EXPAND_RESPONSE_SECONDS = 0.3f
+        const val PANEL_VISIBILITY_THRESHOLD = 0.0001f
+        const val PANEL_CONTENT_DELAY_MILLIS = 45
+        const val PANEL_CONTENT_FADE_MILLIS = 180
+        const val PANEL_CONTENT_TRANSLATION_FRACTION = 0.12f
         const val REVEAL_DISTANCE_FRACTION = 0.72f
         const val ENTRY_FADE_MILLIS = 90
         const val TICK_INTERVAL_MS = 80L
@@ -931,3 +987,36 @@ internal class CornerRadialOverlayView(
         const val DISMISS_FALLBACK_GRACE_MS = 260L
     }
 }
+
+private fun Modifier.panelReveal(
+    progress: () -> Float,
+    seedSize: Float,
+    cornerRadius: Float,
+    anchorOnLeft: Boolean,
+    squircleEnabled: Boolean,
+): Modifier =
+    drawWithCache {
+        val revealPath = Path()
+        onDrawWithContent {
+            val revealProgress = progress()
+            val revealWidth = PanelRevealMotion.extent(size.width, seedSize, revealProgress)
+            val revealHeight = PanelRevealMotion.extent(size.height, seedSize, revealProgress)
+            val revealLeft =
+                PanelRevealMotion.horizontalOffset(size.width, revealWidth, anchorOnLeft)
+            val revealTop = PanelRevealMotion.verticalOffset(size.height, revealHeight)
+            revealPath.rewind()
+            revealPath.addSquircleRect(
+                width = revealWidth,
+                height = revealHeight,
+                cornerRadius = cornerRadius,
+                squircleEnabled = squircleEnabled,
+            )
+            translate(left = revealLeft, top = revealTop) {
+                clipPath(revealPath) {
+                    translate(left = -revealLeft, top = -revealTop) {
+                        this@onDrawWithContent.drawContent()
+                    }
+                }
+            }
+        }
+    }

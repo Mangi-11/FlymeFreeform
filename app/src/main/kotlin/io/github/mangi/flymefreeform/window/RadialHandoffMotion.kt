@@ -11,6 +11,8 @@ internal data class RadialHandoffVisuals(
 
 /** Keeps the released radial geometry fixed while the panel takes over its visual state. */
 internal object RadialHandoffMotion {
+    const val DURATION_MILLIS = 160L
+
     fun sample(
         frozenRevealProgress: Float,
         handoffProgress: Float,
