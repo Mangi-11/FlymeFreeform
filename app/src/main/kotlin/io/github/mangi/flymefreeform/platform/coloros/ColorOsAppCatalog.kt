@@ -69,6 +69,10 @@ internal class ColorOsAppCatalog(
                     excluded = excluded,
                     identity = RadialAppEntry::component,
                 )
+            (radial.asSequence() + panel.asSequence())
+                .map(RadialAppEntry::icon)
+                .distinct()
+                .forEach(Bitmap::prepareToDraw)
             publish(AppCatalogSnapshot(radial, panel))
         }
     }

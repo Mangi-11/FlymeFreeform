@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
@@ -77,6 +78,7 @@ internal class ColorOsFreeformCoordinator(
     private val pointerQueueLock = Any()
     private var pendingMove: MotionEvent? = null
     private var movePosted = false
+    private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
 
     fun start() {
         registerPackageObserver()
@@ -284,7 +286,15 @@ internal class ColorOsFreeformCoordinator(
                 else -> if (gestureEngine.isClaimed) gestureEngine.cancel() else GestureAction.Ignore
             }
         when (action) {
-            is GestureAction.Activate -> showOverlay(action.side, action.x, action.y)
+            is GestureAction.Activate ->
+                showOverlay(
+                    side = action.side,
+                    originX = action.originX,
+                    originY = action.originY,
+                    x = action.x,
+                    y = action.y,
+                    config = config,
+                )
             is GestureAction.Update -> {
                 val selected = overlay?.updateGesture(action.x, action.y)
                 gestureEngine.setSelection(selected)
@@ -301,18 +311,18 @@ internal class ColorOsFreeformCoordinator(
 
     private fun showOverlay(
         side: io.github.mangi.flymefreeform.gesture.CornerSide,
+        originX: Float,
+        originY: Float,
         x: Float,
         y: Float,
+        config: CornerGestureConfig,
     ) {
         removeOverlay()
         morePanelActive = false
-        val view = CornerRadialOverlayView(context, this)
         val params = createOverlayParams(focusable = false)
-        var added = false
+        var view: CornerRadialOverlayView? = null
         try {
-            windowManager.addView(view, params)
-            added = true
-            overlay = view
+            view = CornerRadialOverlayView(context, this)
             view.begin(
                 side = side,
                 catalog = catalogSnapshot,
@@ -322,21 +332,48 @@ internal class ColorOsFreeformCoordinator(
                         contentScalePercent = lastSettings.radialIconContentScalePercent,
                         maskScalePercent = lastSettings.radialIconMaskScalePercent,
                     ),
+                originX = originX,
+                originY = originY,
                 x = x,
                 y = y,
+                inwardDeadZone = config.inwardThreshold,
+                upwardDeadZone = config.upwardThreshold,
             )
+            overlay = view
+            windowManager.addView(view, params)
             view.post {
                 inputMethodManager?.hideSoftInputFromWindow(view.windowToken, 0)
             }
         } catch (exception: RuntimeException) {
-            gestureEngine.cancel()
-            if (added) {
-                overlay = view
-                removeOverlay()
-            } else {
-                overlay = null
-            }
-            logger(Log.WARN, "SYSTEM_OVERLAY_ADD_FAILED", exception)
+            handleOverlayFailure(view, "SYSTEM_OVERLAY_ADD_FAILED", exception)
+        } catch (error: LinkageError) {
+            handleOverlayFailure(view, "SYSTEM_OVERLAY_ADD_FAILED", error)
+        }
+    }
+
+    private fun handleOverlayFailure(
+        view: CornerRadialOverlayView?,
+        diagnosticCode: String,
+        throwable: Throwable,
+    ) {
+        gestureEngine.cancel()
+        if (view != null) {
+            overlay = view
+            removeOverlay()
+        } else {
+            overlay = null
+        }
+        logOverlayFailure(diagnosticCode, throwable)
+    }
+
+    private fun logOverlayFailure(
+        diagnosticCode: String,
+        throwable: Throwable,
+    ) {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastOverlayFailureLogAt >= OVERLAY_FAILURE_LOG_INTERVAL_MS) {
+            lastOverlayFailureLogAt = now
+            logger(Log.WARN, diagnosticCode, throwable)
         }
     }
 
@@ -376,6 +413,10 @@ internal class ColorOsFreeformCoordinator(
         removeOverlay()
     }
 
+    override fun onCleanupFailed(throwable: Throwable) {
+        logOverlayFailure("SYSTEM_OVERLAY_DISPOSE_FAILED", throwable)
+    }
+
     private fun createOverlayParams(focusable: Boolean): WindowManager.LayoutParams =
         WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -407,13 +448,16 @@ internal class ColorOsFreeformCoordinator(
         val view = overlay ?: return
         overlay = null
         morePanelActive = false
+        val cleanupFailure = view.disposeOverlay()
         try {
             windowManager.removeViewImmediate(view)
         } catch (_: IllegalArgumentException) {
             // 已被系统移除；本地所有权仍需清空。
-            return
         } catch (exception: RuntimeException) {
             logger(Log.WARN, "SYSTEM_OVERLAY_REMOVE_FAILED", exception)
+        }
+        cleanupFailure?.let { throwable ->
+            logOverlayFailure("SYSTEM_OVERLAY_DISPOSE_FAILED", throwable)
         }
     }
 
@@ -490,6 +534,7 @@ internal class ColorOsFreeformCoordinator(
 
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
+        const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
         val CRITICAL_PACKAGES =
             setOf(
                 "com.android.systemui",

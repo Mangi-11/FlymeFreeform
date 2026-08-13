@@ -36,4 +36,117 @@ class RadialGeometryTest {
         assertTrue(left.itemCenters.last().y > left.itemCenters.dropLast(1).maxOf { it.y })
         assertTrue(right.itemCenters.last().y > right.itemCenters.dropLast(1).maxOf { it.y })
     }
+
+    @Test
+    fun gestureProgressIsMirroredAndIndependentOfCornerStart() {
+        val left =
+            RadialGeometry.gestureProgress(
+                side = CornerSide.Left,
+                originX = 4f,
+                originY = 1992f,
+                x = 64f,
+                y = 1922f,
+                inwardDeadZone = 20f,
+                upwardDeadZone = 10f,
+                revealDistance = 100f,
+            )
+        val shiftedLeft =
+            RadialGeometry.gestureProgress(
+                side = CornerSide.Left,
+                originX = 30f,
+                originY = 1980f,
+                x = 90f,
+                y = 1910f,
+                inwardDeadZone = 20f,
+                upwardDeadZone = 10f,
+                revealDistance = 100f,
+            )
+        val right =
+            RadialGeometry.gestureProgress(
+                side = CornerSide.Right,
+                originX = 996f,
+                originY = 1992f,
+                x = 936f,
+                y = 1922f,
+                inwardDeadZone = 20f,
+                upwardDeadZone = 10f,
+                revealDistance = 100f,
+            )
+
+        assertEquals(left, shiftedLeft, 0.0001f)
+        assertEquals(left, right, 0.0001f)
+    }
+
+    @Test
+    fun gestureProgressStartsAfterDeadZoneAndCanMoveBack() {
+        val atActivation =
+            RadialGeometry.gestureProgress(
+                CornerSide.Left,
+                0f,
+                2000f,
+                20f,
+                1990f,
+                20f,
+                10f,
+                100f,
+            )
+        val forward =
+            RadialGeometry.gestureProgress(
+                CornerSide.Left,
+                0f,
+                2000f,
+                80f,
+                1930f,
+                20f,
+                10f,
+                100f,
+            )
+        val backward =
+            RadialGeometry.gestureProgress(
+                CornerSide.Left,
+                0f,
+                2000f,
+                45f,
+                1965f,
+                20f,
+                10f,
+                100f,
+            )
+
+        assertEquals(0f, atActivation, 0f)
+        assertTrue(forward > backward)
+        assertTrue(backward > atActivation)
+        assertEquals(
+            1f,
+            RadialGeometry.gestureProgress(
+                CornerSide.Left,
+                0f,
+                2000f,
+                500f,
+                1500f,
+                20f,
+                10f,
+                100f,
+            ),
+            0f,
+        )
+    }
+
+    @Test
+    fun itemMotionStaggersOpacityPositionAndScale() {
+        val near = RadialItemMotion.sample(revealProgress = 0.4f, slot = 0)
+        val far = RadialItemMotion.sample(revealProgress = 0.4f, slot = 4)
+        val hidden = RadialItemMotion.sample(revealProgress = 0f, slot = 0)
+        val complete = RadialItemMotion.sample(revealProgress = 1f, slot = 0)
+
+        assertTrue(near.positionProgress > far.positionProgress)
+        assertTrue(near.alpha > far.alpha)
+        assertTrue(near.scale > far.scale)
+        assertEquals(0f, hidden.positionProgress, 0f)
+        assertEquals(0.55f, hidden.scale, 0f)
+        assertEquals(0f, hidden.alpha, 0f)
+        assertEquals(1f, complete.positionProgress, 0f)
+        assertEquals(1f, complete.scale, 0f)
+        assertEquals(1f, complete.alpha, 0f)
+    }
 }

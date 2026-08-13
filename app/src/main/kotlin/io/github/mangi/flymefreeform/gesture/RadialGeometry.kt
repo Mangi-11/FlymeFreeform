@@ -5,6 +5,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 internal data class GesturePoint(val x: Float, val y: Float)
 
@@ -50,8 +51,23 @@ internal object RadialGeometry {
         return RadialLayout(side, origin, radius, centers)
     }
 
-    fun progress(layout: RadialLayout, x: Float, y: Float, revealDistance: Float): Float =
-        (hypot(x - layout.origin.x, y - layout.origin.y) / revealDistance).coerceIn(0f, 1f)
+    fun gestureProgress(
+        side: CornerSide,
+        originX: Float,
+        originY: Float,
+        x: Float,
+        y: Float,
+        inwardDeadZone: Float,
+        upwardDeadZone: Float,
+        revealDistance: Float,
+    ): Float {
+        if (!revealDistance.isFinite() || revealDistance <= 0f) return 1f
+        val inward = if (side == CornerSide.Left) x - originX else originX - x
+        val upward = originY - y
+        val activeInward = (inward - inwardDeadZone.coerceAtLeast(0f)).coerceAtLeast(0f)
+        val activeUpward = (upward - upwardDeadZone.coerceAtLeast(0f)).coerceAtLeast(0f)
+        return (hypot(activeInward, activeUpward) / revealDistance).coerceIn(0f, 1f)
+    }
 
     fun selection(
         layout: RadialLayout,
@@ -79,4 +95,31 @@ internal object RadialGeometry {
 
     fun polarAngle(layout: RadialLayout, point: GesturePoint): Float =
         atan2(point.y - layout.origin.y, point.x - layout.origin.x)
+}
+
+internal data class RadialItemVisuals(
+    val positionProgress: Float,
+    val scale: Float,
+    val alpha: Float,
+)
+
+internal object RadialItemMotion {
+    fun sample(
+        revealProgress: Float,
+        slot: Int,
+    ): RadialItemVisuals {
+        val staggered =
+            (revealProgress.coerceIn(0f, 1f) * STAGGER_MULTIPLIER - slot.coerceAtLeast(0) * SLOT_DELAY)
+                .coerceIn(0f, 1f)
+        val eased = 1f - (1f - staggered) * (1f - staggered) * (1f - staggered)
+        return RadialItemVisuals(
+            positionProgress = eased,
+            scale = MIN_SCALE + (1f - MIN_SCALE) * eased,
+            alpha = sqrt(staggered),
+        )
+    }
+
+    private const val STAGGER_MULTIPLIER = 1.38f
+    private const val SLOT_DELAY = 0.055f
+    private const val MIN_SCALE = 0.55f
 }

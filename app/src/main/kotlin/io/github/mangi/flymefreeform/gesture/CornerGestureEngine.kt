@@ -20,7 +20,13 @@ internal enum class GesturePhase {
 internal sealed interface GestureAction {
     data object Ignore : GestureAction
     data object PassThrough : GestureAction
-    data class Activate(val side: CornerSide, val x: Float, val y: Float) : GestureAction
+    data class Activate(
+        val side: CornerSide,
+        val originX: Float,
+        val originY: Float,
+        val x: Float,
+        val y: Float,
+    ) : GestureAction
     data class Update(val side: CornerSide, val x: Float, val y: Float) : GestureAction
     data class Commit(val selectedIndex: Int?) : GestureAction
     data object Cancel : GestureAction
@@ -113,7 +119,7 @@ internal class CornerGestureEngine {
             }
             claimed = true
             phase = GesturePhase.Revealing
-            return GestureAction.Activate(activeSide, x, y)
+            return GestureAction.Activate(activeSide, originX, originY, x, y)
         }
 
         phase = GesturePhase.Selecting

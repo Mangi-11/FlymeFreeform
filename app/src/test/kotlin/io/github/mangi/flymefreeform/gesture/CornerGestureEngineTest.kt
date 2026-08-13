@@ -1,6 +1,7 @@
 package io.github.mangi.flymefreeform.gesture
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -45,7 +46,14 @@ class CornerGestureEngineTest {
     fun repeatedMovesActivateOnlyOnceThenUpdate() {
         val engine = CornerGestureEngine()
         engine.down(0, 5f, 1995f, config)
-        assertTrue(engine.move(0, 1, 25f, 1985f, config) is GestureAction.Activate)
+        val activation = engine.move(0, 1, 25f, 1985f, config)
+        assertTrue(activation is GestureAction.Activate)
+        activation as GestureAction.Activate
+        assertEquals(CornerSide.Left, activation.side)
+        assertEquals(5f, activation.originX, 0f)
+        assertEquals(1995f, activation.originY, 0f)
+        assertEquals(25f, activation.x, 0f)
+        assertEquals(1985f, activation.y, 0f)
         assertTrue(engine.move(0, 1, 35f, 1975f, config) is GestureAction.Update)
         assertTrue(engine.up(0) is GestureAction.Commit)
     }
