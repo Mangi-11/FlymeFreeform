@@ -4,10 +4,12 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.Region
+import android.graphics.RegionIterator
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -17,6 +19,9 @@ import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.util.IdentityHashMap
+import java.util.WeakHashMap
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /** 扩展 ColorOS 自有全局指针监听，只处理已验证的普通小窗窗外短点击。 */
 @SuppressLint("PrivateApi")
@@ -33,8 +38,11 @@ internal class OutsideTapCloseHookInstaller(
             val taskClass = classLoader.loadClass(TASK_CLASS)
             val displayContentClass = classLoader.loadClass(DISPLAY_CONTENT_CLASS)
             val windowStateClass = classLoader.loadClass(WINDOW_STATE_CLASS)
+            val captionClass = classLoader.loadClass(FLEXIBLE_CAPTION_VIEW_CLASS)
             val onPointerEvent =
                 listenerClass.getDeclaredMethod("onPointerEvent", MotionEvent::class.java)
+            val updateTouchableRegion =
+                captionClass.getDeclaredMethod("updateTouchableRegion", Region::class.java)
             val access =
                 ColorOsOutsideTapAccess(
                     listenerClass = listenerClass,
@@ -42,8 +50,36 @@ internal class OutsideTapCloseHookInstaller(
                     taskClass = taskClass,
                     displayContentClass = displayContentClass,
                     windowStateClass = windowStateClass,
+                    captionClass = captionClass,
+                    onFailure = ::logFailure,
                 )
-            configuration.observe { access.interruptAll() }
+            module
+                .hook(updateTouchableRegion)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("flymefreeform.system.outside_tap_input_region")
+                .intercept { chain ->
+                    val caption = chain.thisObject ?: return@intercept chain.proceed()
+                    val originalRegion = chain.getArg(0) as? Region ?: return@intercept chain.proceed()
+                    val protectedRegion =
+                        try {
+                            access.buildProtectedRegion(caption, originalRegion, configuration.snapshot)
+                        } catch (exception: ReflectiveOperationException) {
+                            access.clearProtection(caption)
+                            logFailure("OUTSIDE_TAP_REGION_REFLECTION_FAILED", exception)
+                            null
+                        } catch (exception: RuntimeException) {
+                            access.clearProtection(caption)
+                            logFailure("OUTSIDE_TAP_REGION_FAILED", exception)
+                            null
+                        }
+                    if (protectedRegion == null) {
+                        return@intercept chain.proceed()
+                    }
+                    val result = chain.proceed(arrayOf(protectedRegion.region))
+                    access.markProtected(caption, protectedRegion.task)
+                    result
+                }
+            configuration.observe(access::onConfigurationChanged)
             module
                 .hook(onPointerEvent)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -79,7 +115,7 @@ internal class OutsideTapCloseHookInstaller(
                     }
                     result
                 }
-            module.log(Log.INFO, TAG, "OUTSIDE_TAP_HOOK_INSTALLED")
+            module.log(Log.INFO, TAG, "OUTSIDE_TAP_INPUT_REGION_HOOK_INSTALLED")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "OUTSIDE_TAP_TARGET_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {
@@ -100,10 +136,16 @@ internal class OutsideTapCloseHookInstaller(
         taskClass: Class<*>,
         displayContentClass: Class<*>,
         windowStateClass: Class<*>,
+        captionClass: Class<*>,
+        private val onFailure: (String, Throwable) -> Unit,
     ) {
         private val controllerField = listenerClass.requiredField("this$0")
         private val contextField = controllerClass.requiredField("mContext")
+        private val flexibleTasksField = controllerClass.requiredField("mFlexibleTasks")
+        private val captionTaskField = captionClass.requiredField("mTask")
+        private val captionControllerField = captionClass.requiredField("mFlexibleTaskController")
         private val inputMethodWindowField = displayContentClass.requiredField("mInputMethodWindow")
+        private val updateCaptionTouchRegion = captionClass.requiredMethod("updateTouchRegion", 0)
         private val getTopZoomTask = controllerClass.requiredMethod("getTopZoomTask", 0)
         private val isCanRespondEvent = controllerClass.requiredMethod("isCanRespondEvent", 0)
         private val isTaskInFlexibleState =
@@ -123,11 +165,6 @@ internal class OutsideTapCloseHookInstaller(
             )
         private val isIgnoreExpandRegion =
             controllerClass.requiredMethod("isIgnoreExpandRegion", 1)
-        private val transferTouch =
-            controllerClass.requiredMethod(
-                name = "transferTouchToFlexibleTask",
-                parameterTypes = arrayOf(taskClass),
-            )
         private val exitFlexibleTask =
             controllerClass.requiredMethod(
                 name = "exitFlexibleTask",
@@ -140,6 +177,8 @@ internal class OutsideTapCloseHookInstaller(
                     ),
             )
         private val getDisplayContent = taskClass.requiredMethod("getDisplayContent", 0)
+        private val getTaskBounds = taskClass.requiredMethod("getBounds", 0)
+        private val getDisplayBounds = displayContentClass.requiredMethod("getBounds", 0)
         private val isWindowVisible = windowStateClass.requiredMethod("isVisible", 0)
         private val getTouchableRegion =
             windowStateClass.requiredMethod(
@@ -147,6 +186,171 @@ internal class OutsideTapCloseHookInstaller(
                 parameterTypes = arrayOf(Region::class.java),
             )
         private val engines = IdentityHashMap<Any, OutsideTapGestureEngine>()
+        private val captions = WeakHashMap<Any, Unit>()
+        private val protectedTasks = WeakHashMap<Any, Unit>()
+
+        fun onConfigurationChanged(
+            settings: io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot,
+        ) {
+            interruptAll()
+            val knownCaptions = synchronized(captions) { captions.keys.toList() }
+            knownCaptions.forEach { caption ->
+                try {
+                    updateCaptionTouchRegion.invokeUnwrapped(caption)
+                } catch (exception: ReflectiveOperationException) {
+                    clearProtection(caption)
+                    onFailure("OUTSIDE_TAP_REGION_REFRESH_REFLECTION_FAILED", exception)
+                } catch (exception: RuntimeException) {
+                    clearProtection(caption)
+                    onFailure("OUTSIDE_TAP_REGION_REFRESH_FAILED", exception)
+                }
+            }
+            if (!settings.enabled || settings.outsideTapCloseMode == OutsideTapCloseMode.Disabled) {
+                synchronized(protectedTasks) { protectedTasks.clear() }
+            }
+        }
+
+        fun buildProtectedRegion(
+            caption: Any,
+            originalRegion: Region,
+            settings: io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot,
+        ): ProtectedTouchableRegion? {
+            synchronized(captions) { captions[caption] = Unit }
+            val task = captionTaskField.get(caption) ?: return clearProtection(caption)
+            val controller = captionControllerField.get(caption) ?: return clearProtection(caption)
+            val mode =
+                if (settings.enabled) settings.outsideTapCloseMode
+                else OutsideTapCloseMode.Disabled
+            if (
+                mode == OutsideTapCloseMode.Disabled ||
+                    !isOrdinaryZoom(controller, task) ||
+                    hasMenuShowing.invokeUnwrapped(controller) == true
+            ) {
+                return clearProtection(caption)
+            }
+            val displayContent = getDisplayContent.invokeUnwrapped(task) ?: return clearProtection(caption)
+            if (isIgnoreExpandRegion.invokeUnwrapped(controller, displayContent) == true) {
+                return clearProtection(caption)
+            }
+            val captionView = caption as? View ?: return clearProtection(caption)
+            val localWidth = captionView.width
+            val localHeight = captionView.height
+            val taskBounds = getTaskBounds.invokeUnwrapped(task) as? Rect ?: return clearProtection(caption)
+            val visibleBounds = getVisibleBounds.invokeUnwrapped(controller, task) as? Rect
+                ?: return clearProtection(caption)
+            val displayBounds = getDisplayBounds.invokeUnwrapped(displayContent) as? Rect
+                ?: return clearProtection(caption)
+            if (
+                localWidth <= 0 ||
+                    localHeight <= 0 ||
+                    taskBounds.isEmpty ||
+                    visibleBounds.isEmpty ||
+                    displayBounds.isEmpty
+            ) {
+                return clearProtection(caption)
+            }
+            val scaleX = visibleBounds.width().toFloat() / localWidth
+            val scaleY = visibleBounds.height().toFloat() / localHeight
+            if (
+                !scaleX.isFinite() ||
+                    !scaleY.isFinite() ||
+                    scaleX <= 0f ||
+                    scaleY <= 0f ||
+                    kotlin.math.abs(scaleX - scaleY) > SCALE_TOLERANCE
+            ) {
+                return clearProtection(caption)
+            }
+
+            val outsideOnScreen = Region(displayBounds)
+            outsideOnScreen.op(visibleBounds, Region.Op.DIFFERENCE)
+            allFlexibleTaskBounds(controller).forEach { bounds ->
+                outsideOnScreen.op(bounds, Region.Op.DIFFERENCE)
+            }
+            val context = contextField.get(controller) as? Context ?: return clearProtection(caption)
+            val statusBarBottom = displayBounds.top + statusBarHeight(context)
+            if (statusBarBottom > displayBounds.top) {
+                outsideOnScreen.op(
+                    Rect(displayBounds.left, displayBounds.top, displayBounds.right, statusBarBottom),
+                    Region.Op.DIFFERENCE,
+                )
+            }
+            val excludedRegion =
+                updateTapExcludeRegion.invokeUnwrapped(controller, displayContent, null) as? Region
+            if (excludedRegion != null && !excludedRegion.isEmpty) {
+                outsideOnScreen.op(excludedRegion, Region.Op.DIFFERENCE)
+            }
+            visibleImeRegion(displayContent)?.let { imeRegion ->
+                outsideOnScreen.op(imeRegion, Region.Op.DIFFERENCE)
+            }
+            if (outsideOnScreen.isEmpty) return clearProtection(caption)
+
+            val localOutside =
+                screenToCaptionRegion(
+                    screenRegion = outsideOnScreen,
+                    visibleBounds = visibleBounds,
+                    scaleX = scaleX,
+                    scaleY = scaleY,
+                )
+            if (localOutside.isEmpty) return clearProtection(caption)
+            val protectedRegion = Region(originalRegion)
+            protectedRegion.op(localOutside, Region.Op.UNION)
+            return ProtectedTouchableRegion(task, protectedRegion)
+        }
+
+        fun markProtected(caption: Any, task: Any) {
+            synchronized(captions) { captions[caption] = Unit }
+            synchronized(protectedTasks) { protectedTasks[task] = Unit }
+        }
+
+        fun clearProtection(caption: Any): ProtectedTouchableRegion? {
+            val task = captionTaskField.get(caption)
+            if (task != null) synchronized(protectedTasks) { protectedTasks.remove(task) }
+            return null
+        }
+
+        private fun isProtected(task: Any): Boolean =
+            synchronized(protectedTasks) { protectedTasks.containsKey(task) }
+
+        private fun allFlexibleTaskBounds(controller: Any): List<Rect> {
+            val tasks = flexibleTasksField.get(controller) ?: return emptyList()
+            val taskSnapshot =
+                synchronized(tasks) {
+                    (tasks as? Iterable<*>)?.filterNotNull()?.toList().orEmpty()
+                }
+            return taskSnapshot.mapNotNull { flexibleTask ->
+                (getVisibleBounds.invokeUnwrapped(controller, flexibleTask) as? Rect)
+                    ?.takeUnless { it.isEmpty }
+                    ?.let(::Rect)
+            }
+        }
+
+        private fun visibleImeRegion(displayContent: Any): Region? {
+            val imeWindow = inputMethodWindowField.get(displayContent) ?: return null
+            if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return null
+            return Region().also { getTouchableRegion.invokeUnwrapped(imeWindow, it) }
+        }
+
+        private fun screenToCaptionRegion(
+            screenRegion: Region,
+            visibleBounds: Rect,
+            scaleX: Float,
+            scaleY: Float,
+        ): Region {
+            val result = Region()
+            val iterator = RegionIterator(screenRegion)
+            val screenRect = Rect()
+            while (iterator.next(screenRect)) {
+                val localRect =
+                    Rect(
+                        floor((screenRect.left - visibleBounds.left) / scaleX).toInt(),
+                        floor((screenRect.top - visibleBounds.top) / scaleY).toInt(),
+                        ceil((screenRect.right - visibleBounds.left) / scaleX).toInt(),
+                        ceil((screenRect.bottom - visibleBounds.top) / scaleY).toInt(),
+                    )
+                if (!localRect.isEmpty) result.op(localRect, Region.Op.UNION)
+            }
+            return result
+        }
 
         fun beforeOriginal(
             listener: Any,
@@ -221,14 +425,14 @@ internal class OutsideTapCloseHookInstaller(
                 engine.interrupt()
                 return null
             }
-            val captured = transferTouch.invokeUnwrapped(controller, task) == true
+            // 只有标题输入层已从 DOWN 起接管窗外区域时才启用关闭判定。
             engine.begin(
                 task = task,
                 pointerId = event.getPointerId(0),
                 x = event.rawX,
                 y = event.rawY,
                 eventTime = event.eventTime,
-                captured = captured,
+                captured = isProtected(task),
             )
             return null
         }
@@ -263,6 +467,10 @@ internal class OutsideTapCloseHookInstaller(
             controller: Any,
             event: MotionEvent,
         ): Any? {
+            if (event.pointerCount == 0) {
+                engine.interrupt()
+                return null
+            }
             val task = getTopZoomTask.invokeUnwrapped(controller) ?: run {
                 engine.interrupt()
                 return null
@@ -336,10 +544,17 @@ internal class OutsideTapCloseHookInstaller(
         const val TASK_CLASS = "com.android.server.wm.Task"
         const val DISPLAY_CONTENT_CLASS = "com.android.server.wm.DisplayContent"
         const val WINDOW_STATE_CLASS = "com.android.server.wm.WindowState"
+        const val FLEXIBLE_CAPTION_VIEW_CLASS = "com.android.server.wm.FlexibleCaptionView"
         const val ORDINARY_ZOOM_STATE = 1
+        const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
     }
 }
+
+private data class ProtectedTouchableRegion(
+    val task: Any,
+    val region: Region,
+)
 
 private fun Class<*>.requiredField(name: String): Field {
     var current: Class<*>? = this
