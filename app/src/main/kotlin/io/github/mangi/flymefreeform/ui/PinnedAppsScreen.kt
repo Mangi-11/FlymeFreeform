@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -26,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,7 +41,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -53,6 +54,7 @@ import io.github.mangi.flymefreeform.ui.component.rememberTopBarBackdrop
 import io.github.mangi.flymefreeform.ui.component.topBarContainerColor
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -60,10 +62,12 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowUpDown
+import top.yukonga.miuix.kmp.icon.basic.Search
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -75,7 +79,10 @@ internal fun PinnedAppsScreen(
     onBack: () -> Unit,
     onPinnedComponentsChange: (List<ComponentName>) -> Unit,
 ) {
-    var selectedSlot by remember { mutableIntStateOf(state.settings.pinnedComponents.size.coerceAtMost(5)) }
+    // pickerSlot 为 null 表示选择器关闭；lastPickerSlot 在关闭动画期间维持 sheet 内容
+    var pickerSlot by remember { mutableStateOf<Int?>(null) }
+    var lastPickerSlot by remember { mutableIntStateOf(0) }
+    var pickerQuery by remember { mutableStateOf("") }
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberTopBarBackdrop()
     val topBarColor = topBarContainerColor(backdrop)
@@ -152,90 +159,179 @@ internal fun PinnedAppsScreen(
                                 index = index,
                                 app = app,
                                 missingComponent = component?.takeIf { app == null },
-                                selected = selectedSlot == index,
                                 enabled = state.canChangeSettings,
                                 pinnedCount = pinned.size,
-                                onSelect = { selectedSlot = index },
-                                onRemove = {
-                                    onPinnedComponentsChange(pinned.filterIndexed { itemIndex, _ -> itemIndex != index })
-                                    selectedSlot = index.coerceAtMost((pinned.size - 2).coerceAtLeast(0))
+                                onClick = {
+                                    pickerQuery = ""
+                                    lastPickerSlot = index
+                                    pickerSlot = index
                                 },
                                 onMove = { target ->
                                     val reordered = pinned.toMutableList()
                                     val moved = reordered.removeAt(index)
                                     reordered.add(target, moved)
-                                    selectedSlot = target
                                     onPinnedComponentsChange(reordered)
                                 },
                             )
                         }
                     }
                 }
-                item(key = "apps_intro") {
-                    Text(
-                        text = stringResource(R.string.available_apps_title),
-                        modifier =
-                            Modifier
-                                .padding(start = 16.dp, top = 20.dp, bottom = 8.dp)
-                                .semantics { heading() },
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        style = MiuixTheme.textStyles.subtitle,
+                }
+            }
+            val shownSlot = pickerSlot ?: lastPickerSlot
+            val filteredApps =
+                remember(apps, pickerQuery) {
+                    if (pickerQuery.isBlank()) {
+                        apps
+                    } else {
+                        apps.filter {
+                            it.label.contains(pickerQuery, ignoreCase = true) ||
+                                it.component.packageName.contains(pickerQuery, ignoreCase = true)
+                        }
+                    }
+                }
+            OverlayBottomSheet(
+                show = pickerSlot != null,
+                title = stringResource(R.string.slot_title_format, shownSlot + 1),
+                onDismissRequest = { pickerSlot = null },
+            ) {
+                Column {
+                    TextField(
+                        value = pickerQuery,
+                        onValueChange = { pickerQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = stringResource(R.string.search_apps_placeholder),
+                        useLabelAsPlaceholder = true,
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(
+                                imageVector = MiuixIcons.Basic.Search,
+                                contentDescription = null,
+                                modifier = Modifier.padding(start = 12.dp, end = 8.dp),
+                            )
+                        },
                     )
-                }
-                if (apps.isEmpty()) {
-                    item(key = "apps_empty") {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            BasicComponent(
-                                title = stringResource(R.string.available_apps_loading),
-                                summary = stringResource(R.string.available_apps_loading_summary),
-                            )
+                    LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                        if (pinned.getOrNull(shownSlot) != null) {
+                            item(key = "remove_slot") {
+                                BasicComponent(
+                                    title = stringResource(R.string.remove_app_action),
+                                    titleColor =
+                                        BasicComponentDefaults.titleColor(
+                                            color = MiuixTheme.colorScheme.error,
+                                        ),
+                                    onClick = {
+                                        onPinnedComponentsChange(
+                                            pinned.filterIndexed { itemIndex, _ -> itemIndex != shownSlot },
+                                        )
+                                        pickerSlot = null
+                                    },
+                                    onClickLabel = stringResource(R.string.remove_app_action),
+                                    role = Role.Button,
+                                    enabled = state.canChangeSettings,
+                                )
+                            }
+                        }
+                        when {
+                            apps.isEmpty() ->
+                                item(key = "apps_loading") {
+                                    BasicComponent(
+                                        title = stringResource(R.string.available_apps_loading),
+                                        summary = stringResource(R.string.available_apps_loading_summary),
+                                        enabled = false,
+                                    )
+                                }
+                            filteredApps.isEmpty() ->
+                                item(key = "apps_no_match") {
+                                    BasicComponent(
+                                        title = stringResource(R.string.no_matching_apps),
+                                        enabled = false,
+                                    )
+                                }
+                            else ->
+                                items(filteredApps, key = { it.component.flattenToString() }) { app ->
+                                    val pinnedIndex = pinned.indexOf(app.component)
+                                    BasicComponent(
+                                        title = app.label,
+                                        summary = app.component.packageName,
+                                        startAction = { AppIcon(app) },
+                                        endActions =
+                                            when {
+                                                pinnedIndex == shownSlot -> {
+                                                    {
+                                                        Text(
+                                                            text = stringResource(R.string.slot_current_badge),
+                                                            color = MiuixTheme.colorScheme.primary,
+                                                            style = MiuixTheme.textStyles.body2,
+                                                        )
+                                                    }
+                                                }
+                                                pinnedIndex >= 0 -> {
+                                                    {
+                                                        Text(
+                                                            text =
+                                                                stringResource(
+                                                                    R.string.slot_title_format,
+                                                                    pinnedIndex + 1,
+                                                                ),
+                                                            color =
+                                                                MiuixTheme.colorScheme
+                                                                    .onSurfaceVariantActions,
+                                                            style = MiuixTheme.textStyles.body2,
+                                                        )
+                                                    }
+                                                }
+                                                else -> null
+                                            },
+                                        onClick = {
+                                            onPinnedComponentsChange(
+                                                assignToSlot(pinned, shownSlot, app.component),
+                                            )
+                                            pickerSlot = null
+                                        },
+                                        onClickLabel =
+                                            stringResource(
+                                                R.string.assign_to_slot_action,
+                                                shownSlot + 1,
+                                                app.label,
+                                            ),
+                                        role = Role.Button,
+                                        enabled =
+                                            state.canChangeSettings && pinnedIndex != shownSlot,
+                                    )
+                                }
                         }
                     }
-                } else {
-                    items(apps, key = { it.component.flattenToString() }) { app ->
-                        Card(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 6.dp),
-                        ) {
-                            BasicComponent(
-                                title = app.label,
-                                summary = app.component.packageName,
-                                startAction = { AppIcon(app) },
-                                onClick = {
-                                    val updated = pinned.toMutableList()
-                                    val existing = updated.indexOf(app.component)
-                                    if (existing != selectedSlot) {
-                                        val target = selectedSlot.coerceAtMost(updated.size)
-                                        when {
-                                            existing >= 0 && target < updated.size -> {
-                                                val replaced = updated[target]
-                                                updated[target] = app.component
-                                                updated[existing] = replaced
-                                            }
-                                            existing >= 0 -> {
-                                                updated.removeAt(existing)
-                                                updated.add(app.component)
-                                            }
-                                            target < updated.size -> updated[target] = app.component
-                                            else -> updated.add(app.component)
-                                        }
-                                        onPinnedComponentsChange(updated)
-                                        selectedSlot = (target + 1).coerceAtMost(ModulePreferences.MAX_PINNED_APPS - 1)
-                                    }
-                                },
-                                onClickLabel = stringResource(R.string.assign_app_action, selectedSlot + 1),
-                                role = Role.Button,
-                                enabled = state.canChangeSettings,
-                            )
-                        }
-                    }
-                }
                 }
             }
         }
     }
+}
+
+/** 将 [component] 放入 [slot]；已固定在其他槽位时与原槽位应用交换，语义与原选择流程一致。 */
+private fun assignToSlot(
+    pinned: List<ComponentName>,
+    slot: Int,
+    component: ComponentName,
+): List<ComponentName> {
+    val updated = pinned.toMutableList()
+    val existing = updated.indexOf(component)
+    if (existing == slot) return pinned
+    val target = slot.coerceAtMost(updated.size)
+    when {
+        existing >= 0 && target < updated.size -> {
+            val replaced = updated[target]
+            updated[target] = component
+            updated[existing] = replaced
+        }
+        existing >= 0 -> {
+            updated.removeAt(existing)
+            updated.add(component)
+        }
+        target < updated.size -> updated[target] = component
+        else -> updated.add(component)
+    }
+    return updated
 }
 
 @Composable
@@ -243,11 +339,9 @@ private fun PinnedSlot(
     index: Int,
     app: InstalledLauncherApp?,
     missingComponent: ComponentName?,
-    selected: Boolean,
     enabled: Boolean,
     pinnedCount: Int,
-    onSelect: () -> Unit,
-    onRemove: () -> Unit,
+    onClick: () -> Unit,
     onMove: (Int) -> Unit,
 ) {
     var dragY by remember(index) { mutableFloatStateOf(0f) }
@@ -276,7 +370,7 @@ private fun PinnedSlot(
     val summary =
         when {
             missingComponent != null -> stringResource(R.string.pinned_slot_missing, index + 1)
-            app != null -> stringResource(R.string.pinned_slot_assigned, index + 1)
+            app != null -> stringResource(R.string.slot_title_format, index + 1)
             else -> stringResource(R.string.pinned_slot_tap, index + 1)
         }
     BasicComponent(
@@ -285,8 +379,7 @@ private fun PinnedSlot(
                 .fillMaxWidth()
                 .graphicsLayer { translationY = dragY }
                 .zIndex(if (dragY == 0f) 0f else 1f)
-                .then(moveModifier)
-                .semantics { this.selected = selected },
+                .then(moveModifier),
         title = title,
         summary = summary,
         startAction = {
@@ -306,14 +399,7 @@ private fun PinnedSlot(
             }
         },
         endActions = {
-            if (app != null || missingComponent != null) {
-                TextButton(
-                    text = stringResource(R.string.remove_action),
-                    onClick = onRemove,
-                    enabled = enabled,
-                    minWidth = 48.dp,
-                    minHeight = 36.dp,
-                )
+            if (app != null && enabled && pinnedCount > 1) {
                 Icon(
                     imageVector = MiuixIcons.Basic.ArrowUpDown,
                     contentDescription = stringResource(R.string.drag_reorder_action),
@@ -322,10 +408,9 @@ private fun PinnedSlot(
                 )
             }
         },
-        onClick = onSelect,
-        onClickLabel = stringResource(R.string.select_slot_action, index + 1),
+        onClick = onClick,
+        onClickLabel = stringResource(R.string.open_slot_picker_action, index + 1),
         role = Role.Button,
-        holdDownState = selected,
         enabled = enabled,
     )
 }
