@@ -61,21 +61,18 @@
     <string name="percent_value">%1$d%%</string>
 
     <string name="radial_apps_screen_title">扇形应用</string>
-    <string name="radial_apps_screen_subtitle">点按槽位选择或替换应用，长按拖动调整顺序</string>
-    <string name="pinned_slots_title">固定槽位</string>
-    <string name="slot_title_format">槽位 %1$d</string>
+    <string name="radial_apps_screen_subtitle">按此顺序显示在扇形中，长按拖动调整顺序</string>
+    <string name="added_apps_title">已添加</string>
+    <string name="added_apps_empty">未添加应用</string>
+    <string name="added_apps_empty_summary">在「选择应用」中添加后，按此顺序显示在扇形中</string>
+    <string name="pinned_app_missing">应用已卸载或当前不可用</string>
+    <string name="select_apps_action">选择应用</string>
+    <string name="add_named_app_action">添加 %1$s</string>
+    <string name="remove_named_app_action">移除 %1$s</string>
     <string name="available_apps_loading">正在读取应用</string>
     <string name="available_apps_loading_summary">应用列表将在后台准备完成后显示</string>
-    <string name="pinned_slot_empty">空槽位</string>
-    <string name="pinned_slot_tap">槽位 %1$d · 点击选择应用</string>
-    <string name="pinned_slot_missing">槽位 %1$d · 应用已卸载或当前不可用</string>
     <string name="search_apps_placeholder">搜索应用</string>
-    <string name="remove_app_action">移除应用</string>
     <string name="no_matching_apps">未找到匹配应用</string>
-    <string name="slot_current_badge">当前</string>
-    <string name="drag_reorder_action">长按并拖动排序</string>
-    <string name="open_slot_picker_action">为槽位 %1$d 选择应用</string>
-    <string name="assign_to_slot_action">将 %2$s 放入槽位 %1$d</string>
     <string name="back_action">返回</string>
 
     <string name="implementation_principle_title">实现方式</string>
