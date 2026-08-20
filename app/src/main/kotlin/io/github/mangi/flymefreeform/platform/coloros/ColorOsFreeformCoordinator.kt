@@ -14,7 +14,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.view.inputmethod.InputMethodManager
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
@@ -49,7 +48,6 @@ internal class ColorOsFreeformCoordinator(
             ThreadPoolExecutor.DiscardOldestPolicy(),
         )
     private val windowManager = context.getSystemService(WindowManager::class.java)
-    private val inputMethodManager = context.getSystemService(InputMethodManager::class.java)
     private val environmentState = GestureEnvironmentState(context)
     private val gestureEngine = CornerGestureEngine()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
@@ -341,9 +339,6 @@ internal class ColorOsFreeformCoordinator(
             )
             overlay = view
             windowManager.addView(view, params)
-            view.post {
-                inputMethodManager?.hideSoftInputFromWindow(view.windowToken, 0)
-            }
         } catch (exception: RuntimeException) {
             handleOverlayFailure(view, "SYSTEM_OVERLAY_ADD_FAILED", exception)
         } catch (error: LinkageError) {
@@ -417,18 +412,23 @@ internal class ColorOsFreeformCoordinator(
         logOverlayFailure("SYSTEM_OVERLAY_DISPOSE_FAILED", throwable)
     }
 
-    private fun createOverlayParams(focusable: Boolean): WindowManager.LayoutParams =
-        WindowManager.LayoutParams(
+    private fun createOverlayParams(focusable: Boolean): WindowManager.LayoutParams {
+        // 非聚焦窗不带 ALT 时位于输入法上方；聚焦面板则需要 ALT 保持相同层级。
+        val inputFlags =
+            if (focusable) {
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+            } else {
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            }
+        return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                if (focusable) 0 else
-                    (WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM),
+                inputFlags,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.FILL
@@ -437,6 +437,7 @@ internal class ColorOsFreeformCoordinator(
             setFitInsetsTypes(0)
             title = "FlymeFreeformCornerOverlay"
         }
+    }
 
     private fun cancelActiveGesture() {
         activeGestureConfig = null
