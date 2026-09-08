@@ -52,6 +52,7 @@ internal class ColorOsFreeformCoordinator(
     private val gestureEngine = CornerGestureEngine()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val launcher = ColorOsFreeformLauncher(context)
+    private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
         ColorOsAppCatalog(context, catalogExecutor) { snapshot ->
             handler.post { catalogSnapshot = snapshot }
@@ -112,6 +113,7 @@ internal class ColorOsFreeformCoordinator(
             registerPointerListener()
             if (pinsChanged || catalogSnapshot.radialApps.isEmpty()) appCatalog.refresh(settings)
         } else {
+            sidebar.cancel()
             unregisterPointerListener()
             activeEnvironmentApproved = false
             activeGestureConfig = null
@@ -392,9 +394,39 @@ internal class ColorOsFreeformCoordinator(
     override fun onMorePanelRequested() {
         val view = overlay ?: return
         morePanelActive = true
+        activeEnvironmentApproved = false
+        gestureEngine.cancel()
+        if (!sidebar.open(
+                beforeOpen = {
+                    if (overlay === view && lastSettings.enabled && isGestureEnvironmentAllowed()) {
+                        view.retainBackdropForPanel()
+                        true
+                    } else false
+                },
+                onResult = { result ->
+                    if (overlay === view) {
+                        if (result == ColorOsSidebarClient.Outcome.Fallback && lastSettings.enabled && isGestureEnvironmentAllowed() &&
+                            context.getSystemService(android.os.UserManager::class.java)?.isUserForeground == true
+                        ) {
+                            view.visibility = android.view.View.VISIBLE
+                            showBuiltInMorePanel(view)
+                        } else if (result != ColorOsSidebarClient.Outcome.Shown) removeOverlay()
+                    }
+                },
+                onExitStarted = { if (overlay === view) view.beginBackdropExit() },
+                onHideBackdrop = { hidden ->
+                    if (overlay === view) view.hideBackdropAfterFrame(hidden) else hidden()
+                },
+                onClosed = { if (overlay === view) removeOverlay() },
+            )
+        ) removeOverlay()
+    }
+
+    private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
         val params = createOverlayParams(focusable = true)
         try {
             windowManager.updateViewLayout(view, params)
+            view.showBuiltInMorePanel()
             view.requestFocus()
         } catch (exception: RuntimeException) {
             logger(Log.WARN, "SYSTEM_OVERLAY_FOCUS_FAILED", exception)
@@ -448,6 +480,7 @@ internal class ColorOsFreeformCoordinator(
     private fun removeOverlay() {
         val view = overlay ?: return
         overlay = null
+        if (sidebar.isPending) sidebar.cancel()
         morePanelActive = false
         val cleanupFailure = view.disposeOverlay()
         try {

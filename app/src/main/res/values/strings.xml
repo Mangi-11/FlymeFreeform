@@ -20,7 +20,7 @@
     <string name="implementation_state_summary">左右下角斜向内上滑，连续选择后松手，以 ColorOS 自由窗启动应用</string>
     <string name="implementation_state_value">角落扇形</string>
     <string name="scope_title">模块作用域</string>
-    <string name="scope_complete">system_server、系统界面和桌面作用域均已启用</string>
+    <string name="scope_complete">system_server、系统界面、桌面和智能侧边栏作用域均已启用</string>
     <string name="scope_waiting">连接框架后检查所需作用域</string>
     <string name="scope_missing">缺少：%1$s。点击向框架请求补全</string>
     <string name="scope_requesting">等待框架确认作用域请求</string>

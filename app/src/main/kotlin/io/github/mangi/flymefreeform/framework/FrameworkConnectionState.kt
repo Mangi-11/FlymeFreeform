@@ -41,6 +41,7 @@ internal data class FrameworkConnectionState(
                 "system",
                 "com.android.systemui",
                 "com.android.launcher",
+                "com.coloros.smartsidebar",
             )
     }
 }

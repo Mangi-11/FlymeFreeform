@@ -108,6 +108,9 @@ internal class CornerRadialOverlayView(
     private val layoutState = mutableStateOf(EMPTY_LAYOUT)
     private val selectedIndexState = mutableIntStateOf(NO_SELECTION)
     private val panelModeState = mutableStateOf(false)
+    private val backdropOnlyState = mutableStateOf(false)
+    private val backdropAlpha = mutableFloatStateOf(1f)
+    private var backdropAnimator: ValueAnimator? = null
     private val exitRequestState = mutableStateOf<ExitRequest?>(null)
     private val revealProgress = mutableFloatStateOf(0f)
     private val handoffRevealProgress = mutableFloatStateOf(0f)
@@ -220,6 +223,8 @@ internal class CornerRadialOverlayView(
     fun disposeOverlay(): Throwable? {
         if (disposed) return null
         disposed = true
+        backdropAnimator?.cancel()
+        backdropAnimator = null
         removeCallbacks(timeout)
         removeCallbacks(dismissFallback)
         var failure: Throwable? = null
@@ -421,6 +426,10 @@ internal class CornerRadialOverlayView(
         animationsEnabled: Boolean,
     ) {
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            if (backdropOnlyState.value) {
+                drawRect(Color.Black, alpha = OverlayBackdrop.MAX_ALPHA * backdropAlpha.floatValue)
+                return@Canvas
+            }
             val panel =
                 if (panelModeState.value && !animationsEnabled) {
                     1f
@@ -449,7 +458,7 @@ internal class CornerRadialOverlayView(
             drawRect(
                 color = Color.Black,
                 alpha =
-                    (MAX_SCRIM_ALPHA / 255f) *
+                    OverlayBackdrop.MAX_ALPHA *
                         handoffVisuals.scrimProgress *
                         scrimExitAlpha,
             )
@@ -847,12 +856,60 @@ internal class CornerRadialOverlayView(
         handoffRevealProgress.floatValue = revealProgress.floatValue
         handoffLayoutState.value = layoutState.value
         handoffMetricsState.value = metricsState.value?.radial
+        removeCallbacks(timeout)
         listener.onMorePanelRequested()
+    }
+
+    fun showBuiltInMorePanel() {
         if (disposed || !isAttachedToWindow) return
+        backdropOnlyState.value = false
         panelModeState.value = true
         removeCallbacks(timeout)
         postDelayed(timeout, PANEL_TIMEOUT_MS)
         requestFocus()
+    }
+
+    fun retainBackdropForPanel() {
+        backdropAlpha.floatValue = 1f
+        backdropOnlyState.value = true
+    }
+
+    fun beginBackdropExit() {
+        if (disposed || !backdropOnlyState.value) return
+        backdropAnimator?.cancel()
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            backdropAlpha.floatValue = 0f
+            return
+        }
+        backdropAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 500L
+            addUpdateListener {
+                val alpha = AllAppsPanelMotion.exit(it.currentPlayTime / 1000f).alpha
+                backdropAlpha.floatValue = alpha
+                if (alpha <= AllAppsPanelMotion.EXIT_ALPHA_THRESHOLD) {
+                    backdropAlpha.floatValue = 0f
+                    cancel()
+                }
+            }
+            start()
+        }
+    }
+
+    fun hideBackdropAfterFrame(onHidden: () -> Unit) {
+        backdropAnimator?.cancel()
+        backdropAnimator = null
+        if (disposed || !isAttachedToWindow) {
+            onHidden()
+            return
+        }
+        // 必须等透明帧提交后才让截图等工具执行，不能只确认状态变量已经更新。
+        if (isHardwareAccelerated) {
+            viewTreeObserver.registerFrameCommitCallback { post { onHidden() } }
+        } else {
+            postOnAnimation { postOnAnimation { onHidden() } }
+        }
+        backdropAlpha.floatValue = 0f
+        invalidate()
     }
 
     private fun dismissAnimated(pendingCommit: RadialAppEntry?) {
@@ -966,7 +1023,6 @@ internal class CornerRadialOverlayView(
                 itemCenters = emptyList(),
             )
         const val NO_SELECTION = -1
-        const val MAX_SCRIM_ALPHA = 105f
         const val PLATE_ALPHA = 235f / 255f
         const val PANEL_SURFACE_ALPHA = 253f / 255f
         const val MORE_DOT_RADIUS_FRACTION = 0.052f

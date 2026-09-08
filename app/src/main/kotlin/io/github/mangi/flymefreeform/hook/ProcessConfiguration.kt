@@ -34,6 +34,10 @@ internal class ProcessConfiguration(
         listener(snapshot)
     }
 
+    fun removeObserver(listener: (ModuleSettingsSnapshot) -> Unit) {
+        listeners -= listener
+    }
+
     private fun refresh(preferences: SharedPreferences, initial: Boolean) {
         val next =
             try {

@@ -6,6 +6,8 @@ import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
 import io.github.mangi.flymefreeform.hook.LauncherHookInstaller
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
+import io.github.mangi.flymefreeform.hook.SidebarHookInstaller
+import io.github.mangi.flymefreeform.platform.coloros.ColorOsSidebarTarget
 import io.github.mangi.flymefreeform.hook.SystemServerHookInstaller
 import io.github.mangi.flymefreeform.hook.SystemUiHookInstaller
 
@@ -66,6 +68,11 @@ class ModuleMain : XposedModule() {
         val settings = configuration ?: return
         if (hooksInstalled) return
         when {
+            processName == ColorOsSidebarTarget.PROCESS_NAME && param.packageName == ColorOsSidebarTarget.PACKAGE_NAME -> {
+                hooksInstalled = true
+                SidebarHookInstaller(this, settings).install(param.classLoader)
+            }
+
             processName == PROCESS_SYSTEM_UI && param.packageName == PROCESS_SYSTEM_UI -> {
                 hooksInstalled = true
                 SystemUiHookInstaller(this, settings).install(param.classLoader)
@@ -86,7 +93,8 @@ class ModuleMain : XposedModule() {
     private fun isExpectedProcess(param: XposedModuleInterface.ModuleLoadedParam): Boolean =
         param.isSystemServer ||
             param.processName == PROCESS_SYSTEM_UI ||
-            param.processName == PROCESS_LAUNCHER
+            param.processName == PROCESS_LAUNCHER ||
+            param.processName == ColorOsSidebarTarget.PROCESS_NAME
 
     private fun disableForConfigurationFailure(code: String, exception: RuntimeException) {
         configuration = null
