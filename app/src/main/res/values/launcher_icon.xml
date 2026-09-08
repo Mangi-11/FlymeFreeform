@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 108dp 基准画布四边各留 24dp，原始图案在中央 60dp 区域内等比缩放。 -->
+    <fraction name="launcher_icon_inset">22.222222%</fraction>
+</resources>

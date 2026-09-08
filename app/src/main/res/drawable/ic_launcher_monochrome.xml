@@ -4,5 +4,7 @@
     <bitmap
         android:src="@drawable/ic_launcher_mark"
         android:filter="true"
-        android:gravity="fill" />
+        android:gravity="fill"
+        android:tint="#FF000000"
+        android:tintMode="src_in" />
 </inset>
