@@ -34,12 +34,6 @@ class MainActivity : ComponentActivity() {
                     onLeftCornerEnabledChange = repository::setLeftCornerEnabled,
                     onRightCornerEnabledChange = repository::setRightCornerEnabled,
                     onCornerTriggerRangeChange = repository::setCornerTriggerRangeDp,
-                    onRadialCircularIconsEnabledChange =
-                        repository::setRadialCircularIconsEnabled,
-                    onRadialIconContentScaleChange =
-                        repository::setRadialIconContentScalePercent,
-                    onRadialIconMaskScaleChange =
-                        repository::setRadialIconMaskScalePercent,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,

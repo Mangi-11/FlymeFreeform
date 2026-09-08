@@ -23,18 +23,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ElectricalServices
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PowerSettingsNew
-import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.SwipeLeft
 import androidx.compose.material.icons.rounded.SwipeRight
 import androidx.compose.material.icons.rounded.SwipeUp
 import androidx.compose.material.icons.rounded.TouchApp
-import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,9 +85,6 @@ internal fun ControlScreen(
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
-    onRadialCircularIconsEnabledChange: (Boolean) -> Unit,
-    onRadialIconContentScaleChange: (Int) -> Unit,
-    onRadialIconMaskScaleChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
@@ -171,15 +165,6 @@ internal fun ControlScreen(
                             onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                             onHandleSwipeUpToMiniEnabledChange =
                                 onHandleSwipeUpToMiniEnabledChange,
-                        )
-                    }
-                    item(key = "radial_appearance") {
-                        RadialAppearanceCard(
-                            state = state,
-                            onRadialCircularIconsEnabledChange =
-                                onRadialCircularIconsEnabledChange,
-                            onRadialIconContentScaleChange = onRadialIconContentScaleChange,
-                            onRadialIconMaskScaleChange = onRadialIconMaskScaleChange,
                         )
                     }
                     item(key = "about") { AboutCard() }
@@ -458,89 +443,6 @@ private fun CornerRangePreview(
             enabled = rightEnabled,
         )
     }
-}
-
-@Composable
-private fun RadialAppearanceCard(
-    state: FrameworkConnectionState,
-    onRadialCircularIconsEnabledChange: (Boolean) -> Unit,
-    onRadialIconContentScaleChange: (Int) -> Unit,
-    onRadialIconMaskScaleChange: (Int) -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        SwitchPreference(
-            checked = state.settings.radialCircularIconsEnabled,
-            onCheckedChange = onRadialCircularIconsEnabledChange,
-            title = stringResource(R.string.radial_circular_icons_title),
-            summary = stringResource(R.string.radial_circular_icons_summary),
-            enabled = state.canChangeSettings,
-            startAction = {
-                PreferenceIcon(Icons.Rounded.RadioButtonUnchecked, state.canChangeSettings)
-            },
-        )
-        RemotePercentSliderPreference(
-            icon = Icons.Rounded.ZoomIn,
-            confirmedValue = state.settings.radialIconContentScalePercent,
-            isUpdating = state.isUpdating,
-            enabled = state.canChangeSettings && state.settings.radialCircularIconsEnabled,
-            title = stringResource(R.string.radial_icon_content_scale_title),
-            summary = stringResource(R.string.radial_icon_content_scale_summary),
-            onCommit = onRadialIconContentScaleChange,
-        )
-        RemotePercentSliderPreference(
-            icon = Icons.Rounded.Crop,
-            confirmedValue = state.settings.radialIconMaskScalePercent,
-            isUpdating = state.isUpdating,
-            enabled = state.canChangeSettings && state.settings.radialCircularIconsEnabled,
-            title = stringResource(R.string.radial_icon_mask_scale_title),
-            summary = stringResource(R.string.radial_icon_mask_scale_summary),
-            onCommit = onRadialIconMaskScaleChange,
-        )
-    }
-}
-
-@Composable
-private fun RemotePercentSliderPreference(
-    icon: ImageVector,
-    confirmedValue: Int,
-    isUpdating: Boolean,
-    enabled: Boolean,
-    title: String,
-    summary: String,
-    onCommit: (Int) -> Unit,
-) {
-    var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
-    var isDragging by remember { mutableStateOf(false) }
-    LaunchedEffect(confirmedValue, isUpdating, enabled) {
-        if (!enabled) isDragging = false
-        if (!isDragging && !isUpdating) draftValue = confirmedValue.toFloat()
-    }
-    SliderPreference(
-        value = draftValue,
-        onValueChange = { value ->
-            isDragging = true
-            draftValue = value.roundToInt().toFloat()
-        },
-        title = title,
-        summary = summary,
-        valueText = stringResource(R.string.percent_value, draftValue.roundToInt()),
-        enabled = enabled,
-        startAction = { PreferenceIcon(icon, enabled) },
-        valueRange =
-            ModulePreferences.MIN_RADIAL_ICON_SCALE_PERCENT.toFloat()..
-                ModulePreferences.MAX_RADIAL_ICON_SCALE_PERCENT.toFloat(),
-        steps =
-            ModulePreferences.MAX_RADIAL_ICON_SCALE_PERCENT -
-                ModulePreferences.MIN_RADIAL_ICON_SCALE_PERCENT -
-                1,
-        onValueChangeFinished = {
-            isDragging = false
-            val committed =
-                ModulePreferences.coerceRadialIconScalePercent(draftValue.roundToInt())
-            draftValue = committed.toFloat()
-            if (committed != confirmedValue) onCommit(committed)
-        },
-    )
 }
 
 @Composable

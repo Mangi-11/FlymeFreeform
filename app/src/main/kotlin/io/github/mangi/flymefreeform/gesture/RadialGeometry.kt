@@ -5,7 +5,6 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 internal data class GesturePoint(val x: Float, val y: Float)
 
@@ -17,8 +16,8 @@ internal data class RadialLayout(
 )
 
 internal object RadialGeometry {
-    private const val SPAN_DEGREES = 69f
-    private const val CORNER_OFFSET_DEGREES = 12f
+    private const val SPAN_DEGREES = 84f
+    private const val SAFE_DEGREES = 3f
 
     fun layout(
         side: CornerSide,
@@ -26,11 +25,12 @@ internal object RadialGeometry {
         height: Float,
         radius: Float,
         itemCount: Int,
+        offsetX: Float = 0f,
+        offsetY: Float = 0f,
     ): RadialLayout {
-        val origin = GesturePoint(if (side == CornerSide.Left) 0f else width, height)
+        val origin = GesturePoint(offsetX + if (side == CornerSide.Left) 0f else width, offsetY + height)
         if (itemCount <= 0) return RadialLayout(side, origin, radius, emptyList())
-        val appCount = (itemCount - 1).coerceAtLeast(0)
-        val step = SPAN_DEGREES / appCount.coerceAtLeast(1)
+        val step = SPAN_DEGREES / itemCount
         val centers =
             List(itemCount) { index ->
                 // 列表末项是“更多”：它占最靠近角落的 0 号槽；应用从 1 号槽开始
@@ -38,9 +38,9 @@ internal object RadialGeometry {
                 val slot = if (index == itemCount - 1) 0 else index + 1
                 val angle =
                     if (side == CornerSide.Left) {
-                        -CORNER_OFFSET_DEGREES - slot * step
+                        -SAFE_DEGREES - (slot + 0.5f) * step
                     } else {
-                        -180f + CORNER_OFFSET_DEGREES + slot * step
+                        -180f + SAFE_DEGREES + (slot + 0.5f) * step
                     }
                 val radians = angle * PI.toFloat() / 180f
                 GesturePoint(
@@ -51,24 +51,6 @@ internal object RadialGeometry {
         return RadialLayout(side, origin, radius, centers)
     }
 
-    fun gestureProgress(
-        side: CornerSide,
-        originX: Float,
-        originY: Float,
-        x: Float,
-        y: Float,
-        inwardDeadZone: Float,
-        upwardDeadZone: Float,
-        revealDistance: Float,
-    ): Float {
-        if (!revealDistance.isFinite() || revealDistance <= 0f) return 1f
-        val inward = if (side == CornerSide.Left) x - originX else originX - x
-        val upward = originY - y
-        val activeInward = (inward - inwardDeadZone.coerceAtLeast(0f)).coerceAtLeast(0f)
-        val activeUpward = (upward - upwardDeadZone.coerceAtLeast(0f)).coerceAtLeast(0f)
-        return (hypot(activeInward, activeUpward) / revealDistance).coerceIn(0f, 1f)
-    }
-
     fun selection(
         layout: RadialLayout,
         x: Float,
@@ -77,6 +59,7 @@ internal object RadialGeometry {
         enterRadius: Float,
         keepRadius: Float,
     ): Int? {
+        if (layout.radius <= 0f) return null
         if (previous != null && previous in layout.itemCenters.indices) {
             val center = layout.itemCenters[previous]
             if (hypot(x - center.x, y - center.y) <= keepRadius) return previous
@@ -95,31 +78,4 @@ internal object RadialGeometry {
 
     fun polarAngle(layout: RadialLayout, point: GesturePoint): Float =
         atan2(point.y - layout.origin.y, point.x - layout.origin.x)
-}
-
-internal data class RadialItemVisuals(
-    val positionProgress: Float,
-    val scale: Float,
-    val alpha: Float,
-)
-
-internal object RadialItemMotion {
-    fun sample(
-        revealProgress: Float,
-        slot: Int,
-    ): RadialItemVisuals {
-        val staggered =
-            (revealProgress.coerceIn(0f, 1f) * STAGGER_MULTIPLIER - slot.coerceAtLeast(0) * SLOT_DELAY)
-                .coerceIn(0f, 1f)
-        val eased = 1f - (1f - staggered) * (1f - staggered) * (1f - staggered)
-        return RadialItemVisuals(
-            positionProgress = eased,
-            scale = MIN_SCALE + (1f - MIN_SCALE) * eased,
-            alpha = sqrt(staggered),
-        )
-    }
-
-    private const val STAGGER_MULTIPLIER = 1.38f
-    private const val SLOT_DELAY = 0.055f
-    private const val MIN_SCALE = 0.55f
 }

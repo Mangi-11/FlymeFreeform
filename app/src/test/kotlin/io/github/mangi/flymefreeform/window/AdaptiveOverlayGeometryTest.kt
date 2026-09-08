@@ -8,6 +8,26 @@ class AdaptiveOverlayGeometryTest {
     private val phoneInsets = OverlaySafeInsets(left = 176f, top = 176f, right = 176f, bottom = 176f)
 
     @Test
+    fun radialFitsActualBarsWhilePanelKeepsItsLargerSafeMargins() {
+        val radialInsets = OverlaySafeInsets(top = 40f, bottom = 24f)
+        val panelInsets = OverlaySafeInsets(left = 80f, top = 80f, right = 80f, bottom = 80f)
+        val metrics = AdaptiveOverlayGeometry.calculate(
+            width = 400f, height = 890f, safeInsets = panelInsets, systemIconSize = 64f,
+            density = 1f, radialItemCount = 7, radialInsets = radialInsets,
+            fontScale = 1f, panelItemCount = 40, anchorOnLeft = true,
+        )
+        assertEquals(242f, metrics.radial.radius, 0.001f)
+        assertTrue(metrics.panel.bounds.left >= panelInsets.left)
+        val layout = io.github.mangi.flymefreeform.gesture.RadialGeometry.layout(
+            io.github.mangi.flymefreeform.gesture.CornerSide.Left,
+            400f, 890f - radialInsets.top - radialInsets.bottom, metrics.radial.radius, 7,
+            radialInsets.left, radialInsets.top,
+        )
+        assertEquals(0f, layout.origin.x, 0f)
+        assertEquals(866f, layout.origin.y, 0f)
+    }
+
+    @Test
     fun panelRemainsInsideSafeContentBounds() {
         val metrics = phoneMetrics(fontScale = 1f, panelItemCount = 40)
         val bounds = metrics.panel.bounds
@@ -54,6 +74,8 @@ class AdaptiveOverlayGeometryTest {
     fun horizontalSafeInsetsDoNotShrinkTheGestureArc() {
         val edgeToEdge =
             AdaptiveOverlayGeometry.calculate(
+                density = 3f,
+                radialItemCount = 7,
                 width = PHONE_WIDTH,
                 height = PHONE_HEIGHT,
                 safeInsets = OverlaySafeInsets(top = 176f, bottom = 176f),
@@ -73,6 +95,8 @@ class AdaptiveOverlayGeometryTest {
         val insets = OverlaySafeInsets(left = 40f, top = 40f, right = 40f, bottom = 40f)
         val panel =
             AdaptiveOverlayGeometry.calculate(
+                density = 3f,
+                radialItemCount = 7,
                 width = 200f,
                 height = 300f,
                 safeInsets = insets,
@@ -93,6 +117,8 @@ class AdaptiveOverlayGeometryTest {
         val phone = phoneMetrics(fontScale = 1f, panelItemCount = 60)
         val wide =
             AdaptiveOverlayGeometry.calculate(
+                density = 3f,
+                radialItemCount = 7,
                 width = 2200f,
                 height = 2800f,
                 safeInsets = OverlaySafeInsets(left = 120f, top = 120f, right = 120f, bottom = 120f),
@@ -134,6 +160,8 @@ class AdaptiveOverlayGeometryTest {
 
     private fun phoneMetrics(fontScale: Float, panelItemCount: Int): AdaptiveOverlayMetrics =
         AdaptiveOverlayGeometry.calculate(
+            density = 3f,
+            radialItemCount = 7,
             width = PHONE_WIDTH,
             height = PHONE_HEIGHT,
             safeInsets = phoneInsets,

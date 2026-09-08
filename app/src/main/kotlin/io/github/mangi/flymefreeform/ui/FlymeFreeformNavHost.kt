@@ -31,9 +31,6 @@ internal fun FlymeFreeformNavHost(
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
-    onRadialCircularIconsEnabledChange: (Boolean) -> Unit,
-    onRadialIconContentScaleChange: (Int) -> Unit,
-    onRadialIconMaskScaleChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
@@ -69,10 +66,6 @@ internal fun FlymeFreeformNavHost(
                         onLeftCornerEnabledChange = onLeftCornerEnabledChange,
                         onRightCornerEnabledChange = onRightCornerEnabledChange,
                         onCornerTriggerRangeChange = onCornerTriggerRangeChange,
-                        onRadialCircularIconsEnabledChange =
-                            onRadialCircularIconsEnabledChange,
-                        onRadialIconContentScaleChange = onRadialIconContentScaleChange,
-                        onRadialIconMaskScaleChange = onRadialIconMaskScaleChange,
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,

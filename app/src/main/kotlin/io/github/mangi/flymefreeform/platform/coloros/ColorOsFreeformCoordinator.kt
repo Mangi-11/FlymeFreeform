@@ -22,7 +22,6 @@ import io.github.mangi.flymefreeform.gesture.GestureAction
 import io.github.mangi.flymefreeform.hook.GestureEnvironmentState
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
 import io.github.mangi.flymefreeform.window.CornerRadialOverlayView
-import io.github.mangi.flymefreeform.window.RadialIconStyle
 import java.lang.reflect.Proxy
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -54,8 +53,14 @@ internal class ColorOsFreeformCoordinator(
     private val launcher = ColorOsFreeformLauncher(context)
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
-        ColorOsAppCatalog(context, catalogExecutor) { snapshot ->
-            handler.post { catalogSnapshot = snapshot }
+        ColorOsAppCatalog(context, catalogExecutor, logger) { snapshot ->
+            handler.post {
+                // 后台任务完成时配置可能已再次变化，旧结果不得覆盖新外观。
+                if (snapshot.matches(lastSettings)) {
+                    catalogSnapshot = snapshot
+                    overlay?.updateRadialAppearance(snapshot)
+                }
+            }
         }
     private val packageReceiver =
         object : BroadcastReceiver() {
@@ -105,13 +110,15 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun applySettings(settings: ModuleSettingsSnapshot) {
-        val pinsChanged =
+        val selectionChanged =
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedComponents != lastSettings.pinnedComponents
         lastSettings = settings
         if (settings.enabled && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
             registerPointerListener()
-            if (pinsChanged || catalogSnapshot.radialApps.isEmpty()) appCatalog.refresh(settings)
+            if (selectionChanged || catalogSnapshot.radialApps.isEmpty()) {
+                appCatalog.refresh(settings, reloadApps = selectionChanged || catalogSnapshot.radialApps.isEmpty())
+            }
         } else {
             sidebar.cancel()
             unregisterPointerListener()
@@ -289,11 +296,8 @@ internal class ColorOsFreeformCoordinator(
             is GestureAction.Activate ->
                 showOverlay(
                     side = action.side,
-                    originX = action.originX,
-                    originY = action.originY,
                     x = action.x,
                     y = action.y,
-                    config = config,
                 )
             is GestureAction.Update -> {
                 val selected = overlay?.updateGesture(action.x, action.y)
@@ -311,11 +315,8 @@ internal class ColorOsFreeformCoordinator(
 
     private fun showOverlay(
         side: io.github.mangi.flymefreeform.gesture.CornerSide,
-        originX: Float,
-        originY: Float,
         x: Float,
         y: Float,
-        config: CornerGestureConfig,
     ) {
         removeOverlay()
         morePanelActive = false
@@ -326,18 +327,8 @@ internal class ColorOsFreeformCoordinator(
             view.begin(
                 side = side,
                 catalog = catalogSnapshot,
-                iconStyle =
-                    RadialIconStyle.fromPercent(
-                        circularEnabled = lastSettings.radialCircularIconsEnabled,
-                        contentScalePercent = lastSettings.radialIconContentScalePercent,
-                        maskScalePercent = lastSettings.radialIconMaskScalePercent,
-                    ),
-                originX = originX,
-                originY = originY,
                 x = x,
                 y = y,
-                inwardDeadZone = config.inwardThreshold,
-                upwardDeadZone = config.upwardThreshold,
             )
             overlay = view
             windowManager.addView(view, params)

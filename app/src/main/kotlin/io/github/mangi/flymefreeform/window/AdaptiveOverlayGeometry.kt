@@ -31,6 +31,8 @@ internal data class RadialVisualMetrics(
     val iconDiameter: Float,
     val selectionEnterRadius: Float,
     val selectionKeepRadius: Float,
+    val itemPadding: Float,
+    val pixelsPerBaseDp: Float,
 )
 
 internal data class PanelVisualMetrics(
@@ -66,13 +68,16 @@ internal data class AdaptiveOverlayMetrics(
     val panel: PanelVisualMetrics,
 )
 
-/** 只依赖当前窗口与系统图标尺度；所有位置和尺寸都从可用空间推导。 */
+/** 扇形使用统一比例；面板保留自身的系统图标尺度与排版预算。 */
 internal object AdaptiveOverlayGeometry {
     fun calculate(
         width: Float,
         height: Float,
         safeInsets: OverlaySafeInsets,
         systemIconSize: Float,
+        density: Float,
+        radialItemCount: Int,
+        radialInsets: OverlaySafeInsets = safeInsets,
         fontScale: Float,
         panelItemCount: Int,
         anchorOnLeft: Boolean,
@@ -84,19 +89,12 @@ internal object AdaptiveOverlayGeometry {
         val shortEdge = min(width, height)
         val iconSeed = systemIconSize.takeIf { it > 0f } ?: shortEdge * FALLBACK_ICON_FRACTION
         val plateDiameter =
-            (iconSeed * RADIAL_PLATE_ICON_FRACTION)
-                .coerceIn(shortEdge * RADIAL_PLATE_MIN_FRACTION, shortEdge * RADIAL_PLATE_MAX_FRACTION)
-        val radialRadius =
-            min(shortEdge * RADIAL_WIDTH_FRACTION, safeHeight * RADIAL_HEIGHT_FRACTION)
-                .coerceAtLeast(plateDiameter * RADIAL_MIN_PLATE_DISTANCE)
-        val radial =
-            RadialVisualMetrics(
-                radius = radialRadius,
-                plateDiameter = plateDiameter,
-                iconDiameter = plateDiameter * RADIAL_ICON_FRACTION,
-                selectionEnterRadius = plateDiameter * SELECTION_ENTER_FRACTION,
-                selectionKeepRadius = plateDiameter * SELECTION_KEEP_FRACTION,
-            )
+            (iconSeed * PANEL_BASE_ICON_FRACTION)
+                .coerceIn(shortEdge * PANEL_BASE_MIN_FRACTION, shortEdge * PANEL_BASE_MAX_FRACTION)
+        val panelReferenceRadius =
+            min(shortEdge * PANEL_REFERENCE_WIDTH_FRACTION, safeHeight * PANEL_REFERENCE_HEIGHT_FRACTION)
+                .coerceAtLeast(plateDiameter * PANEL_REFERENCE_MIN_PLATE_DISTANCE)
+        val radial = RadialIconGeometry.fit(width, height, density, radialInsets, radialItemCount)
 
         val outerMargin = plateDiameter * OUTER_MARGIN_FRACTION
         val requestedContentHorizontalPadding = plateDiameter * PANEL_HORIZONTAL_PADDING_FRACTION
@@ -112,7 +110,7 @@ internal object AdaptiveOverlayGeometry {
         val widthBudget =
             min(
                 availablePanelWidth,
-                max(minimumCellWidth, radialRadius * PANEL_RADIUS_WIDTH_FRACTION),
+                max(minimumCellWidth, panelReferenceRadius * PANEL_RADIUS_WIDTH_FRACTION),
             )
         val contentHorizontalPadding =
             min(
@@ -143,7 +141,7 @@ internal object AdaptiveOverlayGeometry {
         val heightBudget =
             max(
                 minimumUsefulHeight,
-                min(availablePanelHeight, radialRadius * PANEL_RADIUS_HEIGHT_FRACTION),
+                min(availablePanelHeight, panelReferenceRadius * PANEL_RADIUS_HEIGHT_FRACTION),
             )
         val panelHeight = min(naturalPanelHeight, heightBudget)
         val left =
@@ -176,15 +174,12 @@ internal object AdaptiveOverlayGeometry {
     }
 
     private const val FALLBACK_ICON_FRACTION = 0.13f
-    private const val RADIAL_PLATE_ICON_FRACTION = 0.66f
-    private const val RADIAL_PLATE_MIN_FRACTION = 0.07f
-    private const val RADIAL_PLATE_MAX_FRACTION = 0.10f
-    private const val RADIAL_ICON_FRACTION = 0.90f
-    private const val RADIAL_WIDTH_FRACTION = 0.60f
-    private const val RADIAL_HEIGHT_FRACTION = 0.34f
-    private const val RADIAL_MIN_PLATE_DISTANCE = 4.8f
-    private const val SELECTION_ENTER_FRACTION = 0.90f
-    private const val SELECTION_KEEP_FRACTION = 1.25f
+    private const val PANEL_BASE_ICON_FRACTION = 0.66f
+    private const val PANEL_BASE_MIN_FRACTION = 0.07f
+    private const val PANEL_BASE_MAX_FRACTION = 0.10f
+    private const val PANEL_REFERENCE_WIDTH_FRACTION = 0.60f
+    private const val PANEL_REFERENCE_HEIGHT_FRACTION = 0.34f
+    private const val PANEL_REFERENCE_MIN_PLATE_DISTANCE = 4.8f
     private const val OUTER_MARGIN_FRACTION = 0.55f
     private const val PANEL_HORIZONTAL_PADDING_FRACTION = 0.40f
     private const val PANEL_MAX_CONTENT_HORIZONTAL_PADDING_FRACTION = 0.16f

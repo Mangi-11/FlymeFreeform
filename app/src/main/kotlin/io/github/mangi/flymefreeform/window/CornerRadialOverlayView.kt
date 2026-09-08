@@ -13,7 +13,6 @@ import android.view.WindowInsets
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -43,8 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
@@ -52,6 +51,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -72,7 +73,6 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.mangi.flymefreeform.gesture.CornerSide
 import io.github.mangi.flymefreeform.gesture.RadialGeometry
-import io.github.mangi.flymefreeform.gesture.RadialItemMotion
 import io.github.mangi.flymefreeform.gesture.RadialLayout
 import io.github.mangi.flymefreeform.platform.coloros.AppCatalogSnapshot
 import io.github.mangi.flymefreeform.platform.coloros.RadialAppEntry
@@ -112,22 +112,18 @@ internal class CornerRadialOverlayView(
     private val backdropAlpha = mutableFloatStateOf(1f)
     private var backdropAnimator: ValueAnimator? = null
     private val exitRequestState = mutableStateOf<ExitRequest?>(null)
-    private val revealProgress = mutableFloatStateOf(0f)
-    private val handoffRevealProgress = mutableFloatStateOf(0f)
+    private val entryProgress = Animatable(0f)
+    private val handoffEntryProgress = mutableFloatStateOf(0f)
     private val handoffLayoutState = mutableStateOf(EMPTY_LAYOUT)
     private val handoffMetricsState = mutableStateOf<RadialVisualMetrics?>(null)
     private var appliedWindowInsets: WindowInsets? = null
     private var catalog = AppCatalogSnapshot()
-    private var radialImages: List<ImageBitmap> = emptyList()
+    private val radialClipPath = Path()
+    private val radialImages = mutableStateOf<List<ImageBitmap>>(emptyList())
     private var panelImages: Map<android.content.ComponentName, ImageBitmap> = emptyMap()
-    private var radialIconStyle = RadialIconStyle.Default
     private var side = CornerSide.Right
-    private var gestureOriginX = 0f
-    private var gestureOriginY = 0f
     private var latestX = 0f
     private var latestY = 0f
-    private var inwardDeadZone = 0f
-    private var upwardDeadZone = 0f
     private var selectedIndex: Int? = null
     private var dismissing = false
     private var dismissNotified = false
@@ -152,33 +148,29 @@ internal class CornerRadialOverlayView(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
     }
 
+    fun updateRadialAppearance(next: AppCatalogSnapshot) {
+        if (disposed || dismissing || panelModeState.value) return
+        // 只替换同一批应用的图像，不在滑选途中交换目标或重置入场动画。
+        if (catalog.radialApps.map { it.component } != next.radialApps.map { it.component }) return
+        radialImages.value = next.radialApps.map { it.icon.asImageBitmap() }
+    }
+
     fun begin(
         side: CornerSide,
         catalog: AppCatalogSnapshot,
-        iconStyle: RadialIconStyle,
-        originX: Float,
-        originY: Float,
         x: Float,
         y: Float,
-        inwardDeadZone: Float,
-        upwardDeadZone: Float,
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.side = side
         this.catalog = catalog
-        radialIconStyle = iconStyle
-        gestureOriginX = originX
-        gestureOriginY = originY
         latestX = x
         latestY = y
-        this.inwardDeadZone = inwardDeadZone
-        this.upwardDeadZone = upwardDeadZone
-        radialImages = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
+        radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
         panelImages = catalog.panelApps.associate { entry -> entry.component to entry.icon.asImageBitmap() }
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
-        revealProgress.floatValue = 0f
-        handoffRevealProgress.floatValue = 0f
+        handoffEntryProgress.floatValue = 0f
         handoffLayoutState.value = EMPTY_LAYOUT
         handoffMetricsState.value = null
         panelModeState.value = false
@@ -272,38 +264,46 @@ internal class CornerRadialOverlayView(
         metrics: AdaptiveOverlayMetrics,
         layout: RadialLayout,
     ) {
-        val entryAlpha = remember { Animatable(0f) }
         val panelProgress = remember { Animatable(0f) }
         val panelContentProgress = remember { Animatable(0f) }
         val radialHandoffProgress = remember { Animatable(0f) }
         val exitProgress = remember { Animatable(0f) }
         val panelInputEnabled = remember { mutableStateOf(false) }
-        val itemScales =
+        val itemRings =
             remember(layout.itemCenters.size) {
-                List(layout.itemCenters.size) { Animatable(1f) }
+                List(layout.itemCenters.size) { Animatable(0f) }
             }
-        val iconClipPath = remember { Path() }
         val animationsEnabled = remember { ValueAnimator.areAnimatorsEnabled() }
 
-        LaunchedEffect(Unit) {
-            entryAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(ENTRY_FADE_MILLIS, easing = LinearOutSlowInEasing),
-            )
+        val exitRequest = exitRequestState.value
+        LaunchedEffect(panelModeState.value, exitRequest, backdropOnlyState.value) {
+            if (panelModeState.value || exitRequest != null || backdropOnlyState.value) return@LaunchedEffect
+            if (!animationsEnabled) {
+                entryProgress.snapTo(1f)
+            } else {
+                entryProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(RadialEntryMotion.DURATION_MILLIS.toInt(), easing = LinearEasing),
+                )
+            }
         }
-        LaunchedEffect(selectedIndexState.intValue, itemScales) {
+        LaunchedEffect(selectedIndexState.intValue, itemRings) {
             val selected = selectedIndexState.intValue
             coroutineScope {
-                itemScales.forEachIndexed { index, scale ->
+                itemRings.forEachIndexed { index, ring ->
                     launch {
-                        scale.animateTo(
-                            targetValue = if (index == selected) SELECTED_SCALE else 1f,
-                            animationSpec =
-                                spring(
-                                    dampingRatio = 1f,
-                                    stiffness = SELECTION_SPRING_STIFFNESS,
+                        val target = if (index == selected) 1f else 0f
+                        if (!animationsEnabled) {
+                            ring.snapTo(target)
+                        } else {
+                            ring.animateTo(
+                                targetValue = target,
+                                animationSpec = tween(
+                                    RadialEntryMotion.SELECTION_DURATION_MILLIS.toInt(),
+                                    easing = { RadialEntryMotion.selectionProgress(it) },
                                 ),
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -355,7 +355,6 @@ internal class CornerRadialOverlayView(
                 }
             }
         }
-        val exitRequest = exitRequestState.value
         LaunchedEffect(exitRequest) {
             if (exitRequest != null) {
                 exitProgress.snapTo(0f)
@@ -363,7 +362,7 @@ internal class CornerRadialOverlayView(
                     targetValue = 1f,
                     animationSpec =
                         tween(
-                            durationMillis = RadialExitMotion.DURATION_MILLIS.toInt(),
+                            durationMillis = RadialDismissMotion.DURATION_MILLIS.toInt(),
                             easing = LinearEasing,
                         ),
                 )
@@ -382,12 +381,10 @@ internal class CornerRadialOverlayView(
             RadialCanvas(
                 metrics = radialMetrics,
                 layout = radialLayout,
-                entryAlpha = entryAlpha,
                 panelProgress = panelProgress,
                 radialHandoffProgress = radialHandoffProgress,
                 exitProgress = exitProgress,
-                itemScales = itemScales,
-                iconClipPath = iconClipPath,
+                itemRings = itemRings,
                 animationsEnabled = animationsEnabled,
             )
             if (panelModeState.value) {
@@ -417,12 +414,10 @@ internal class CornerRadialOverlayView(
     private fun RadialCanvas(
         metrics: RadialVisualMetrics,
         layout: RadialLayout,
-        entryAlpha: Animatable<Float, *>,
         panelProgress: Animatable<Float, *>,
         radialHandoffProgress: Animatable<Float, *>,
         exitProgress: Animatable<Float, *>,
-        itemScales: List<Animatable<Float, *>>,
-        iconClipPath: Path,
+        itemRings: List<Animatable<Float, *>>,
         animationsEnabled: Boolean,
     ) {
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
@@ -442,37 +437,42 @@ internal class CornerRadialOverlayView(
                 } else {
                     radialHandoffProgress.value
                 }
-            val exitVisuals = RadialExitMotion.sample(exitProgress.value)
-            val handoffVisuals =
-                RadialHandoffMotion.sample(
-                    frozenRevealProgress =
-                        if (panelModeState.value) {
-                            handoffRevealProgress.floatValue
-                        } else {
-                            revealProgress.floatValue
-                        },
-                    handoffProgress = handoff,
-                    panelProgress = panel,
-                )
-            val scrimExitAlpha = if (panelModeState.value) 1f else exitVisuals.scrimAlpha
-            drawRect(
-                color = Color.Black,
-                alpha =
-                    OverlayBackdrop.MAX_ALPHA *
-                        handoffVisuals.scrimProgress *
-                        scrimExitAlpha,
+            val exitRequest = exitRequestState.value
+            val entrySample = RadialEntryMotion.sample(
+                when {
+                    !animationsEnabled -> 1f
+                    exitRequest != null -> exitRequest.entryProgress
+                    panelModeState.value -> handoffEntryProgress.floatValue
+                    else -> entryProgress.value
+                },
             )
-            val radialContentAlpha = exitVisuals.contentAlpha * handoffVisuals.contentAlpha
-            if (handoffVisuals.revealProgress <= 0f || radialContentAlpha <= 0f) return@Canvas
+            val exitSample = RadialDismissMotion.sample(exitProgress.value)
+            val handoffVisuals = RadialHandoffMotion.sample(
+                frozenRevealProgress = entrySample.contentAlpha,
+                handoffProgress = handoff,
+                panelProgress = panel,
+            )
+            // 提早松手时从当前入场帧衔接退出，不跳到完整展开位置。
+            val dismissalBlend = exitProgress.value.coerceIn(0f, 1f)
+            val dismissal = if (exitRequest == null) null else RadialEntryVisuals(
+                contentAlpha = entrySample.contentAlpha * exitSample.contentAlpha,
+                radialProgress = exitSample.radialProgress + (entrySample.radialProgress - 1f) * (1f - dismissalBlend),
+                horizontalOvershoot = exitSample.horizontalOvershoot + entrySample.horizontalOvershoot * (1f - dismissalBlend),
+                rotationDegrees = exitSample.rotationDegrees + entrySample.rotationDegrees * (1f - dismissalBlend),
+                iconScale = exitSample.iconScale + (entrySample.iconScale - 1f) * (1f - dismissalBlend),
+            )
+            val visual = dismissal ?: entrySample
+            val scrimAlpha = if (panelModeState.value) handoffVisuals.scrimProgress else visual.contentAlpha
+            drawRect(Color.Black, alpha = OverlayBackdrop.MAX_ALPHA * scrimAlpha)
+            val alpha = visual.contentAlpha * if (panelModeState.value) handoffVisuals.contentAlpha else 1f
+            if (alpha <= 0f) return@Canvas
             drawRadialItems(
                 metrics = metrics,
                 layout = layout,
-                reveal = handoffVisuals.revealProgress,
-                entryAlpha = entryAlpha.value,
-                contentAlpha = radialContentAlpha,
-                contentScale = exitVisuals.contentScale * handoffVisuals.contentScale,
-                itemScales = itemScales,
-                iconClipPath = iconClipPath,
+                motion = visual,
+                contentAlpha = alpha,
+                contentScale = if (panelModeState.value) handoffVisuals.contentScale else 1f,
+                itemRings = itemRings,
             )
         }
     }
@@ -480,86 +480,38 @@ internal class CornerRadialOverlayView(
     private fun DrawScope.drawRadialItems(
         metrics: RadialVisualMetrics,
         layout: RadialLayout,
-        reveal: Float,
-        entryAlpha: Float,
+        motion: RadialEntryVisuals,
         contentAlpha: Float,
         contentScale: Float,
-        itemScales: List<Animatable<Float, *>>,
-        iconClipPath: Path,
+        itemRings: List<Animatable<Float, *>>,
     ) {
+        val direction = if (layout.side == CornerSide.Left) 1f else -1f
+        val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
         layout.itemCenters.forEachIndexed { index, destination ->
-            val slot = if (index == layout.itemCenters.lastIndex) 0 else index + 1
-            val itemMotion = RadialItemMotion.sample(reveal, slot)
-            if (itemMotion.alpha <= 0f) return@forEachIndexed
-            val centerX =
-                layout.origin.x + (destination.x - layout.origin.x) * itemMotion.positionProgress
-            val centerY =
-                layout.origin.y + (destination.y - layout.origin.y) * itemMotion.positionProgress
-            val scale =
-                itemMotion.scale *
-                    (itemScales.getOrNull(index)?.value ?: 1f) *
-                    contentScale
-            val alpha = (itemMotion.alpha * entryAlpha * contentAlpha).coerceIn(0f, 1f)
-            if (index < catalog.radialApps.size) {
-                val image = radialImages.getOrNull(index) ?: return@forEachIndexed
-                if (radialIconStyle.circularEnabled) {
-                    drawCircularAppIcon(
-                        image = image,
-                        centerX = centerX,
-                        centerY = centerY,
-                        plateDiameter = metrics.plateDiameter * scale,
-                        selected = index == selectedIndexState.intValue,
-                        alpha = alpha,
-                        iconClipPath = iconClipPath,
-                    )
+            val centerX = layout.origin.x + (destination.x - layout.origin.x) * motion.radialProgress + overshoot
+            val centerY = layout.origin.y + (destination.y - layout.origin.y) * motion.radialProgress
+            val scale = motion.iconScale * contentScale
+            val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
+            val diameter = metrics.iconDiameter * scale
+            rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
+                if (index < catalog.radialApps.size) {
+                    radialImages.value.getOrNull(index)?.let { image ->
+                        drawSystemImage(image, centerX, centerY, diameter, contentAlpha)
+                    }
                 } else {
-                    drawSystemImage(
-                        image = image,
-                        centerX = centerX,
-                        centerY = centerY,
-                        size = metrics.iconDiameter * scale,
-                        alpha = alpha,
+                    drawMoreItem(centerX, centerY, diameter, contentAlpha)
+                }
+                val strokeWidth = metrics.itemPadding * scale * ringProgress
+                if (strokeWidth > 0f) {
+                    drawCircle(
+                        color = Color.White,
+                        radius = diameter / 2f + strokeWidth / 2f,
+                        center = Offset(centerX, centerY),
+                        alpha = RadialEntryMotion.SELECTION_RING_ALPHA * contentAlpha,
+                        style = Stroke(width = strokeWidth),
                     )
                 }
-            } else {
-                drawMoreItem(
-                    centerX = centerX,
-                    centerY = centerY,
-                    diameter = radialIconStyle.moreDiameter(metrics.plateDiameter * scale),
-                    selected = index == selectedIndexState.intValue,
-                    alpha = alpha,
-                )
             }
-        }
-    }
-
-    private fun DrawScope.drawCircularAppIcon(
-        image: ImageBitmap,
-        centerX: Float,
-        centerY: Float,
-        plateDiameter: Float,
-        selected: Boolean,
-        alpha: Float,
-        iconClipPath: Path,
-    ) {
-        val maskDiameter = radialIconStyle.maskDiameter(plateDiameter)
-        val radius = maskDiameter / 2f
-        drawCircle(
-            color = Color.White,
-            radius = radius,
-            center = Offset(centerX, centerY),
-            alpha = alpha * if (selected) 1f else PLATE_ALPHA,
-        )
-        iconClipPath.rewind()
-        iconClipPath.addOval(Rect(centerX - radius, centerY - radius, centerX + radius, centerY + radius))
-        clipPath(iconClipPath) {
-            drawSystemImage(
-                image = image,
-                centerX = centerX,
-                centerY = centerY,
-                size = radialIconStyle.contentDiameter(plateDiameter),
-                alpha = alpha,
-            )
         }
     }
 
@@ -567,14 +519,13 @@ internal class CornerRadialOverlayView(
         centerX: Float,
         centerY: Float,
         diameter: Float,
-        selected: Boolean,
         alpha: Float,
     ) {
         drawCircle(
             color = Color.White,
             radius = diameter / 2f,
             center = Offset(centerX, centerY),
-            alpha = alpha * if (selected) 1f else PLATE_ALPHA,
+            alpha = alpha * PLATE_ALPHA,
         )
         val dotColor = Color(0xFF37373C)
         for (offset in -1..1) {
@@ -599,17 +550,21 @@ internal class CornerRadialOverlayView(
         val drawWidth = if (aspectRatio >= 1f) size else size * aspectRatio
         val drawHeight = if (aspectRatio >= 1f) size / aspectRatio else size
         val destinationSize = IntSize(drawWidth.roundToInt().coerceAtLeast(1), drawHeight.roundToInt().coerceAtLeast(1))
-        drawImage(
-            image = image,
-            dstOffset =
-                IntOffset(
-                    (centerX - destinationSize.width / 2f).roundToInt(),
-                    (centerY - destinationSize.height / 2f).roundToInt(),
-                ),
-            dstSize = destinationSize,
-            alpha = alpha,
-            filterQuality = FilterQuality.High,
-        )
+        radialClipPath.rewind()
+        radialClipPath.addOval(Rect(centerX - size / 2f, centerY - size / 2f, centerX + size / 2f, centerY + size / 2f))
+        clipPath(radialClipPath) {
+            drawImage(
+                image = image,
+                dstOffset =
+                    IntOffset(
+                        (centerX - destinationSize.width / 2f).roundToInt(),
+                        (centerY - destinationSize.height / 2f).roundToInt(),
+                    ),
+                dstSize = destinationSize,
+                alpha = alpha,
+                filterQuality = FilterQuality.High,
+            )
+        }
     }
 
     @Composable
@@ -794,12 +749,19 @@ internal class CornerRadialOverlayView(
         safeInsets: OverlaySafeInsets,
     ) {
         if (requestedWidth <= 0 || requestedHeight <= 0 || disposed) return
+        val radialInsets = currentRadialInsets()
+        val safeWidth = (requestedWidth - radialInsets.left - radialInsets.right).coerceAtLeast(1f)
+        val safeHeight = (requestedHeight - radialInsets.top - radialInsets.bottom).coerceAtLeast(1f)
+        val systemIconDiameter = systemIconSize()
         val metrics =
             AdaptiveOverlayGeometry.calculate(
                 width = requestedWidth.toFloat(),
                 height = requestedHeight.toFloat(),
                 safeInsets = safeInsets,
-                systemIconSize = systemIconSize(),
+                systemIconSize = systemIconDiameter,
+                density = resources.displayMetrics.density,
+                radialItemCount = catalog.radialApps.size + 1,
+                radialInsets = radialInsets,
                 fontScale = resources.configuration.fontScale,
                 panelItemCount = catalog.panelApps.size,
                 anchorOnLeft = side == CornerSide.Left,
@@ -808,8 +770,10 @@ internal class CornerRadialOverlayView(
         layoutState.value =
             RadialGeometry.layout(
                 side = side,
-                width = requestedWidth.toFloat(),
-                height = requestedHeight.toFloat(),
+                width = safeWidth,
+                height = safeHeight,
+                offsetX = radialInsets.left,
+                offsetY = radialInsets.top,
                 radius = metrics.radial.radius,
                 itemCount = catalog.radialApps.size + 1,
             )
@@ -820,17 +784,6 @@ internal class CornerRadialOverlayView(
         val metrics = metricsState.value ?: return
         val layout = layoutState.value
         if (layout.itemCenters.isEmpty()) return
-        revealProgress.floatValue =
-            RadialGeometry.gestureProgress(
-                side = side,
-                originX = gestureOriginX,
-                originY = gestureOriginY,
-                x = latestX,
-                y = latestY,
-                inwardDeadZone = inwardDeadZone,
-                upwardDeadZone = upwardDeadZone,
-                revealDistance = layout.radius * REVEAL_DISTANCE_FRACTION,
-            )
         val next =
             RadialGeometry.selection(
                 layout = layout,
@@ -853,7 +806,7 @@ internal class CornerRadialOverlayView(
     private fun showMorePanel() {
         if (dismissing || panelModeState.value) return
         selectedIndex = null
-        handoffRevealProgress.floatValue = revealProgress.floatValue
+        handoffEntryProgress.floatValue = entryProgress.value
         handoffLayoutState.value = layoutState.value
         handoffMetricsState.value = metricsState.value?.radial
         removeCallbacks(timeout)
@@ -916,14 +869,14 @@ internal class CornerRadialOverlayView(
         if (dismissing || disposed) return
         dismissing = true
         removeCallbacks(timeout)
-        exitRequestState.value = ExitRequest(pendingCommit)
+        exitRequestState.value = ExitRequest(pendingCommit, entryProgress.value)
         removeCallbacks(dismissFallback)
         if (!ValueAnimator.areAnimatorsEnabled()) {
             completeRadialExit()
         } else {
             val durationScale = ValueAnimator.getDurationScale().coerceAtLeast(1f)
             val fallbackDelay =
-                (RadialExitMotion.DURATION_MILLIS * durationScale + DISMISS_FALLBACK_GRACE_MS)
+                (RadialDismissMotion.DURATION_MILLIS * durationScale + DISMISS_FALLBACK_GRACE_MS)
                     .roundToInt()
                     .toLong()
             postDelayed(dismissFallback, fallbackDelay)
@@ -963,6 +916,16 @@ internal class CornerRadialOverlayView(
         next: Throwable,
     ): Throwable =
         current?.also { previous -> previous.addSuppressed(next) } ?: next
+
+    private fun currentRadialInsets(): OverlaySafeInsets {
+        val windowInsets = appliedWindowInsets ?: rootWindowInsets ?: return OverlaySafeInsets()
+        // 扇形属于角落手势本身；系统手势保留区及屏幕圆角不是整页绘制边距。
+        // 只避让实际系统栏、缺口和键盘，正常竖屏圆心落在物理侧边与导航栏顶边。
+        val insets = windowInsets.getInsets(
+            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime(),
+        )
+        return OverlaySafeInsets(insets.left.toFloat(), insets.top.toFloat(), insets.right.toFloat(), insets.bottom.toFloat())
+    }
 
     private fun currentSafeInsets(): OverlaySafeInsets {
         val windowInsets = appliedWindowInsets ?: rootWindowInsets ?: return OverlaySafeInsets()
@@ -1012,7 +975,7 @@ internal class CornerRadialOverlayView(
             0f
         }
 
-    private data class ExitRequest(val pendingCommit: RadialAppEntry?)
+    private data class ExitRequest(val pendingCommit: RadialAppEntry?, val entryProgress: Float)
 
     private companion object {
         val EMPTY_LAYOUT =
@@ -1027,16 +990,12 @@ internal class CornerRadialOverlayView(
         const val PANEL_SURFACE_ALPHA = 253f / 255f
         const val MORE_DOT_RADIUS_FRACTION = 0.052f
         const val MORE_DOT_SPACING_FRACTION = 0.17f
-        const val SELECTED_SCALE = 1.2f
-        const val SELECTION_SPRING_STIFFNESS = 500f
         const val PANEL_EXPAND_DAMPING = 0.9f
         const val PANEL_EXPAND_RESPONSE_SECONDS = 0.3f
         const val PANEL_VISIBILITY_THRESHOLD = 0.0001f
         const val PANEL_CONTENT_DELAY_MILLIS = 45
         const val PANEL_CONTENT_FADE_MILLIS = 180
         const val PANEL_CONTENT_TRANSLATION_FRACTION = 0.12f
-        const val REVEAL_DISTANCE_FRACTION = 0.72f
-        const val ENTRY_FADE_MILLIS = 90
         const val TICK_INTERVAL_MS = 80L
         const val GESTURE_TIMEOUT_MS = 5_000L
         const val PANEL_TIMEOUT_MS = 15_000L

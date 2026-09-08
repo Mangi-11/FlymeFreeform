@@ -10,12 +10,6 @@ internal data class ModuleSettingsSnapshot(
     val cornerTriggerRangeDp: Int = ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
     val pinsSaved: Boolean = false,
     val pinnedComponents: List<ComponentName> = emptyList(),
-    val radialIconContentScalePercent: Int =
-        ModulePreferences.DEFAULT_RADIAL_ICON_CONTENT_SCALE_PERCENT,
-    val radialIconMaskScalePercent: Int =
-        ModulePreferences.DEFAULT_RADIAL_ICON_MASK_SCALE_PERCENT,
-    val radialCircularIconsEnabled: Boolean =
-        ModulePreferences.DEFAULT_RADIAL_CIRCULAR_ICONS_ENABLED,
     val outsideTapCloseMode: OutsideTapCloseMode =
         ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
     val handleSwipeUpToMiniEnabled: Boolean =
@@ -29,18 +23,6 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP,
                 ModulePreferences.coerceCornerTriggerRangeDp(cornerTriggerRangeDp),
-            )
-            .putBoolean(
-                ModulePreferences.KEY_RADIAL_CIRCULAR_ICONS_ENABLED,
-                radialCircularIconsEnabled,
-            )
-            .putInt(
-                ModulePreferences.KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT,
-                ModulePreferences.coerceRadialIconScalePercent(radialIconContentScalePercent),
-            )
-            .putInt(
-                ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT,
-                ModulePreferences.coerceRadialIconScalePercent(radialIconMaskScalePercent),
             )
             .putInt(
                 ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
@@ -85,25 +67,6 @@ internal data class ModuleSettingsSnapshot(
                         ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
                     ),
                 )
-            val radialCircularIconsEnabled =
-                preferences.getBoolean(
-                    ModulePreferences.KEY_RADIAL_CIRCULAR_ICONS_ENABLED,
-                    ModulePreferences.DEFAULT_RADIAL_CIRCULAR_ICONS_ENABLED,
-                )
-            val radialIconContentScalePercent =
-                ModulePreferences.coerceRadialIconScalePercent(
-                    preferences.getInt(
-                        ModulePreferences.KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT,
-                        ModulePreferences.DEFAULT_RADIAL_ICON_CONTENT_SCALE_PERCENT,
-                    ),
-                )
-            val radialIconMaskScalePercent =
-                ModulePreferences.coerceRadialIconScalePercent(
-                    preferences.getInt(
-                        ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT,
-                        ModulePreferences.DEFAULT_RADIAL_ICON_MASK_SCALE_PERCENT,
-                    ),
-                )
             val outsideTapCloseMode =
                 OutsideTapCloseMode.fromStoredValue(
                     preferences.getInt(
@@ -132,9 +95,6 @@ internal data class ModuleSettingsSnapshot(
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 pinsSaved = pinsSaved,
                 pinnedComponents = pins,
-                radialIconContentScalePercent = radialIconContentScalePercent,
-                radialIconMaskScalePercent = radialIconMaskScalePercent,
-                radialCircularIconsEnabled = radialCircularIconsEnabled,
                 outsideTapCloseMode = outsideTapCloseMode,
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
             )

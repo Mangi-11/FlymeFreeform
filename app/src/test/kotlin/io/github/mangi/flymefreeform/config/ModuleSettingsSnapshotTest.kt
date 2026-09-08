@@ -8,15 +8,30 @@ import org.junit.Test
 
 class ModuleSettingsSnapshotTest {
     @Test
-    fun missingIconStyleKeysUseProductDefaults() {
+    fun missingKeysUseProductDefaults() {
         val snapshot = ModuleSettingsSnapshot.readFrom(InMemoryPreferences())
 
-        assertEquals(120, snapshot.radialIconContentScalePercent)
-        assertEquals(100, snapshot.radialIconMaskScalePercent)
         assertEquals(84, snapshot.cornerTriggerRangeDp)
-        assertTrue(snapshot.radialCircularIconsEnabled)
         assertEquals(OutsideTapCloseMode.SingleTap, snapshot.outsideTapCloseMode)
         assertTrue(snapshot.handleSwipeUpToMiniEnabled)
+    }
+
+    @Test
+    fun retiredAppearanceSettingsDoNotAffectCurrentSettings() {
+        val preferences = InMemoryPreferences(
+            "radial_icon_mask_scale_percent" to "retired",
+            "radial_icon_content_scale_percent" to "retired",
+            "radial_circular_icons_enabled" to "retired",
+            "radial_icon_size_percent_v1" to "retired",
+            "radial_icon_roundness_percent_v1" to "retired",
+        )
+        val expected = ModuleSettingsSnapshot.readFrom(InMemoryPreferences())
+        val actual = ModuleSettingsSnapshot.readFrom(preferences)
+        assertEquals(expected, actual)
+        actual.writeTo(preferences.edit()).commit()
+        assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+        assertEquals("retired", preferences.getString("radial_icon_size_percent_v1", null))
+        assertEquals("retired", preferences.getString("radial_icon_roundness_percent_v1", null))
     }
 
     @Test
@@ -45,48 +60,30 @@ class ModuleSettingsSnapshotTest {
     }
 
     @Test
-    fun iconStyleValuesAreClampedWhenRead() {
+    fun cornerRangeIsClampedWhenRead() {
         val preferences =
             InMemoryPreferences(
-                ModulePreferences.KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT to 40,
-                ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT to 180,
                 ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP to 8,
             )
 
         val snapshot = ModuleSettingsSnapshot.readFrom(preferences)
 
-        assertEquals(80, snapshot.radialIconContentScalePercent)
-        assertEquals(120, snapshot.radialIconMaskScalePercent)
         assertEquals(24, snapshot.cornerTriggerRangeDp)
     }
 
     @Test
-    fun iconStyleValuesAreClampedAndRoundTripWhenWritten() {
+    fun cornerRangeIsClampedAndRoundTripsWhenWritten() {
         val preferences = InMemoryPreferences()
         ModuleSettingsSnapshot(
-            radialIconContentScalePercent = 121,
-            radialIconMaskScalePercent = 79,
-            radialCircularIconsEnabled = false,
             cornerTriggerRangeDp = 200,
         ).writeTo(preferences.edit()).commit()
 
-        assertEquals(
-            120,
-            preferences.getInt(ModulePreferences.KEY_RADIAL_ICON_CONTENT_SCALE_PERCENT, 0),
-        )
-        assertEquals(
-            80,
-            preferences.getInt(ModulePreferences.KEY_RADIAL_ICON_MASK_SCALE_PERCENT, 0),
-        )
         assertEquals(
             160,
             preferences.getInt(ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP, 0),
         )
         val restored = ModuleSettingsSnapshot.readFrom(preferences)
-        assertEquals(120, restored.radialIconContentScalePercent)
-        assertEquals(80, restored.radialIconMaskScalePercent)
         assertEquals(160, restored.cornerTriggerRangeDp)
-        assertFalse(restored.radialCircularIconsEnabled)
     }
 }
 

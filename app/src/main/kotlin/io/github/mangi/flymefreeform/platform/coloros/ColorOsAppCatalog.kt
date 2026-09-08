@@ -15,6 +15,7 @@ import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import java.text.Collator
 import java.util.Locale
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicLong
 
 internal data class RadialAppEntry(
     val component: ComponentName,
@@ -25,57 +26,114 @@ internal data class RadialAppEntry(
 internal data class AppCatalogSnapshot(
     val radialApps: List<RadialAppEntry> = emptyList(),
     val panelApps: List<RadialAppEntry> = emptyList(),
-)
+    val settings: ModuleSettingsSnapshot = ModuleSettingsSnapshot(),
+) {
+    fun matches(settings: ModuleSettingsSnapshot): Boolean =
+        this.settings.pinsSaved == settings.pinsSaved &&
+            this.settings.pinnedComponents == settings.pinnedComponents
+}
 
 /** 目录查询只在后台执行；发布后的 Bitmap 与列表供手势热路径只读。 */
 internal class ColorOsAppCatalog(
     private val context: Context,
     private val executor: Executor,
+    logger: (Int, String, Throwable?) -> Unit,
     private val publish: (AppCatalogSnapshot) -> Unit,
 ) {
-    fun refresh(settings: ModuleSettingsSnapshot) {
+    private val iconRenderer = ColorOsRadialIconRenderer(context.resources, logger)
+
+    private val contentRevision = AtomicLong()
+    private var cachedContent: CatalogContent? = null // 仅目录工作线程访问。
+
+    fun refresh(settings: ModuleSettingsSnapshot, reloadApps: Boolean = true) {
+        if (reloadApps) contentRevision.incrementAndGet()
         executor.execute {
-            val launcherApps = context.getSystemService(LauncherApps::class.java) ?: return@execute
-            val user = Process.myUserHandle()
-            val activities = launcherApps.getActivityList(null, user)
-            val entries =
-                activities
-                    .asSequence()
-                    .filterNot { info -> info.componentName.packageName == MODULE_PACKAGE }
-                    .mapNotNull(::toEntry)
-                    .distinctBy(RadialAppEntry::component)
-                    .toList()
-            val byComponent = entries.associateBy(RadialAppEntry::component)
-            val recents = recentComponents().mapNotNull(byComponent::get).distinctBy(RadialAppEntry::component)
-            val collator = Collator.getInstance(Locale.getDefault())
-            val alphabetical =
-                entries.sortedWith { first, second ->
-                    collator.compare(first.label, second.label)
+            val revision = contentRevision.get()
+            val cached = cachedContent
+            val content =
+                if (cached != null && cached.revision == revision &&
+                    cached.settings.pinsSaved == settings.pinsSaved &&
+                    cached.settings.pinnedComponents == settings.pinnedComponents
+                ) {
+                    cached
+                } else {
+                    loadContent(settings, revision) ?: return@execute
                 }
-            val radial =
-                AppSelectionPolicy.radialItems(
-                    pinsSaved = settings.pinsSaved,
-                    availablePins = settings.pinnedComponents.mapNotNull(byComponent::get),
-                    recent = recents,
-                    all = alphabetical,
-                    identity = RadialAppEntry::component,
-                    limit = io.github.mangi.flymefreeform.config.ModulePreferences.MAX_PINNED_APPS,
-                )
-            val excluded = radial.mapTo(HashSet(), RadialAppEntry::component)
-            val panel =
-                AppSelectionPolicy.panelItems(
-                    recent = recents,
-                    all = alphabetical,
-                    excluded = excluded,
-                    identity = RadialAppEntry::component,
-                )
-            (radial.asSequence() + panel.asSequence())
-                .map(RadialAppEntry::icon)
-                .distinct()
-                .forEach(Bitmap::prepareToDraw)
-            publish(AppCatalogSnapshot(radial, panel))
+            cachedContent = content
+            val shapedRadial = content.radialApps.map { entry ->
+                val drawable = content.radialSources[entry.component]
+                if (drawable == null) entry else {
+                    try {
+                        entry.copy(
+                            icon = iconRenderer
+                                .shapedIcon(drawable)
+                                .toBitmap(),
+                        )
+                    } catch (_: RuntimeException) {
+                        entry
+                    }
+                }
+            }
+            shapedRadial.forEach { it.icon.prepareToDraw() }
+            publish(AppCatalogSnapshot(shapedRadial, content.panelApps, settings))
         }
     }
+
+    private fun loadContent(settings: ModuleSettingsSnapshot, revision: Long): CatalogContent? {
+        val launcherApps = context.getSystemService(LauncherApps::class.java) ?: return null
+        val user = Process.myUserHandle()
+        val activities = launcherApps.getActivityList(null, user)
+        val entries =
+            activities
+                .asSequence()
+                .filterNot { info -> info.componentName.packageName == MODULE_PACKAGE }
+                .mapNotNull(::toEntry)
+                .distinctBy(RadialAppEntry::component)
+                .toList()
+        val byComponent = entries.associateBy(RadialAppEntry::component)
+        val recents = recentComponents().mapNotNull(byComponent::get).distinctBy(RadialAppEntry::component)
+        val collator = Collator.getInstance(Locale.getDefault())
+        val alphabetical =
+            entries.sortedWith { first, second ->
+                collator.compare(first.label, second.label)
+            }
+        val radial =
+            AppSelectionPolicy.radialItems(
+                pinsSaved = settings.pinsSaved,
+                availablePins = settings.pinnedComponents.mapNotNull(byComponent::get),
+                recent = recents,
+                all = alphabetical,
+                identity = RadialAppEntry::component,
+                limit = io.github.mangi.flymefreeform.config.ModulePreferences.MAX_PINNED_APPS,
+            )
+        val excluded = radial.mapTo(HashSet(), RadialAppEntry::component)
+        val panel =
+            AppSelectionPolicy.panelItems(
+                recent = recents,
+                all = alphabetical,
+                excluded = excluded,
+                identity = RadialAppEntry::component,
+            )
+        val activityByComponent = activities.associateBy(LauncherActivityInfo::getComponentName)
+        val sources = radial.mapNotNull { entry ->
+            val info = activityByComponent[entry.component] ?: return@mapNotNull null
+            try {
+                entry.component to info.getIcon(context.resources.displayMetrics.densityDpi)
+            } catch (_: RuntimeException) {
+                null
+            }
+        }.toMap()
+        panel.forEach { it.icon.prepareToDraw() }
+        return CatalogContent(revision, settings, radial, panel, sources)
+    }
+
+    private data class CatalogContent(
+        val revision: Long,
+        val settings: ModuleSettingsSnapshot,
+        val radialApps: List<RadialAppEntry>,
+        val panelApps: List<RadialAppEntry>,
+        val radialSources: Map<ComponentName, Drawable>,
+    )
 
     private fun recentComponents(): List<ComponentName> {
         val activityManager = context.getSystemService(ActivityManager::class.java) ?: return emptyList()
@@ -106,8 +164,8 @@ internal class ColorOsAppCatalog(
         val systemIconSize =
             context.getSystemService(ActivityManager::class.java)?.launcherLargeIconSize ?: 0
         val targetSize =
-            systemIconSize.takeIf { it > 0 }
-                ?: maxOf(intrinsicWidth, intrinsicHeight, 1)
+            (systemIconSize.takeIf { it > 0 }
+                ?: maxOf(intrinsicWidth, intrinsicHeight, 1)).coerceAtLeast(1)
         if (this is BitmapDrawable && bitmap != null) {
             if (bitmap.width == targetSize && bitmap.height == targetSize) return bitmap
             return Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true)

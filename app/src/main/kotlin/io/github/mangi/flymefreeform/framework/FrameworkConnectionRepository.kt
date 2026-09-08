@@ -60,25 +60,6 @@ internal class FrameworkConnectionRepository {
             )
         }
 
-    fun setRadialCircularIconsEnabled(enabled: Boolean) =
-        updateSettings { it.copy(radialCircularIconsEnabled = enabled) }
-
-    fun setRadialIconContentScalePercent(percent: Int) =
-        updateSettings {
-            it.copy(
-                radialIconContentScalePercent =
-                    ModulePreferences.coerceRadialIconScalePercent(percent),
-            )
-        }
-
-    fun setRadialIconMaskScalePercent(percent: Int) =
-        updateSettings {
-            it.copy(
-                radialIconMaskScalePercent =
-                    ModulePreferences.coerceRadialIconScalePercent(percent),
-            )
-        }
-
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 
