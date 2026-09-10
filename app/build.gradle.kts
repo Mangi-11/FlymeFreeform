@@ -46,6 +46,17 @@ android {
     }
 }
 
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val suffix = if (variant.buildType == "debug") "-Debug" else ""
+        variant.outputs.forEach { output ->
+            output.outputFileName.set(
+                output.versionName.map { version -> "FlymeFreeform-$version$suffix.apk" },
+            )
+        }
+    }
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
