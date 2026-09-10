@@ -19,7 +19,7 @@ import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
 import io.github.mangi.flymefreeform.gesture.GestureAction
-import io.github.mangi.flymefreeform.hook.GestureEnvironmentState
+import io.github.mangi.flymefreeform.hook.ModuleEnvironmentState
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
 import io.github.mangi.flymefreeform.window.CornerRadialOverlayView
 import java.lang.reflect.Proxy
@@ -32,6 +32,7 @@ internal class ColorOsFreeformCoordinator(
     private val controller: Any,
     private val classLoader: ClassLoader,
     private val configuration: ProcessConfiguration,
+    private val environmentState: ModuleEnvironmentState,
     private val logger: (priority: Int, code: String, throwable: Throwable?) -> Unit,
 ) : CornerRadialOverlayView.Listener {
     private val context = readField(controller, "mContext") as Context
@@ -47,7 +48,6 @@ internal class ColorOsFreeformCoordinator(
             ThreadPoolExecutor.DiscardOldestPolicy(),
         )
     private val windowManager = context.getSystemService(WindowManager::class.java)
-    private val environmentState = GestureEnvironmentState(context)
     private val gestureEngine = CornerGestureEngine()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val launcher = ColorOsFreeformLauncher(context)
@@ -74,20 +74,26 @@ internal class ColorOsFreeformCoordinator(
     private var pointerListener: Any? = null
     @Volatile
     private var pointerRegistered = false
+    @Volatile
+    private var pointerGeneration = 0L
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
     private var activeGestureConfig: CornerGestureConfig? = null
     private val pointerQueueLock = Any()
-    private var pendingMove: MotionEvent? = null
+    private var pendingMove: QueuedPointerEvent? = null
     private var movePosted = false
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
 
     fun start() {
-        registerPackageObserver()
-        configuration.observe { settings ->
-            handler.post { applySettings(settings) }
+        handler.post {
+            environmentState.start(context)
+            environmentState.observe { applySettings(configuration.snapshot) }
+            registerPackageObserver()
+            configuration.observe {
+                handler.post { applySettings(configuration.snapshot) }
+            }
         }
         logger(Log.INFO, "SYSTEM_GESTURE_COORDINATOR_READY", null)
     }
@@ -114,10 +120,11 @@ internal class ColorOsFreeformCoordinator(
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedComponents != lastSettings.pinnedComponents
         lastSettings = settings
-        if (settings.enabled && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
+        if (environmentState.isGestureAllowed(refreshKeyguard = true) && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
+            val resuming = !pointerRegistered
             registerPointerListener()
-            if (selectionChanged || catalogSnapshot.radialApps.isEmpty()) {
-                appCatalog.refresh(settings, reloadApps = selectionChanged || catalogSnapshot.radialApps.isEmpty())
+            if (resuming || selectionChanged || !catalogSnapshot.matches(settings) || catalogSnapshot.radialApps.isEmpty()) {
+                appCatalog.refresh(settings, reloadApps = resuming || selectionChanged || catalogSnapshot.radialApps.isEmpty())
             }
         } else {
             sidebar.cancel()
@@ -131,6 +138,7 @@ internal class ColorOsFreeformCoordinator(
 
     private fun registerPointerListener() {
         if (pointerRegistered) return
+        val generation = pointerGeneration
         try {
             val listenerInterface =
                 Class.forName(
@@ -143,7 +151,7 @@ internal class ColorOsFreeformCoordinator(
                     when (method.name) {
                         "onPointerEvent" -> {
                             val event = args?.firstOrNull() as? MotionEvent
-                            if (event != null) enqueuePointerEvent(event)
+                            if (event != null) enqueuePointerEvent(event, generation)
                             null
                         }
                         "hashCode" -> System.identityHashCode(proxy)
@@ -165,9 +173,9 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
-    private fun enqueuePointerEvent(event: MotionEvent) {
-        if (!pointerRegistered) return
-        val copy = MotionEvent.obtain(event)
+    private fun enqueuePointerEvent(event: MotionEvent, generation: Long) {
+        if (!pointerRegistered || generation != pointerGeneration) return
+        val copy = QueuedPointerEvent(MotionEvent.obtain(event), generation)
         if (event.actionMasked != MotionEvent.ACTION_MOVE) {
             val precedingMove =
                 synchronized(pointerQueueLock) {
@@ -181,7 +189,7 @@ internal class ColorOsFreeformCoordinator(
         }
         var shouldPost = false
         synchronized(pointerQueueLock) {
-            pendingMove?.recycle()
+            pendingMove?.event?.recycle()
             pendingMove = copy
             if (!movePosted) {
                 movePosted = true
@@ -200,8 +208,10 @@ internal class ColorOsFreeformCoordinator(
         processPointerEvent(event)
     }
 
-    private fun processPointerEvent(event: MotionEvent) {
+    private fun processPointerEvent(queued: QueuedPointerEvent) {
+        val event = queued.event
         try {
+            if (queued.generation != pointerGeneration || !pointerRegistered) return
             handlePointerEvent(event)
         } catch (exception: RuntimeException) {
             gestureEngine.cancel()
@@ -214,6 +224,7 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun unregisterPointerListener() {
+        pointerGeneration++
         clearPendingMove()
         val listener = pointerListener ?: return
         pointerRegistered = false
@@ -232,7 +243,7 @@ internal class ColorOsFreeformCoordinator(
 
     private fun clearPendingMove() {
         synchronized(pointerQueueLock) {
-            pendingMove?.recycle()
+            pendingMove?.event?.recycle()
             pendingMove = null
             movePosted = false
         }
@@ -241,7 +252,7 @@ internal class ColorOsFreeformCoordinator(
     private fun handlePointerEvent(event: MotionEvent) {
         if (morePanelActive) return
         val settings = lastSettings
-        if (!settings.enabled) {
+        if (!pointerRegistered || !environmentState.isGestureAllowed()) {
             cancelActiveGesture()
             return
         }
@@ -366,13 +377,17 @@ internal class ColorOsFreeformCoordinator(
     }
 
     override fun onAppCommitted(entry: RadialAppEntry) {
+        val generation = pointerGeneration
         activeEnvironmentApproved = false
         gestureEngine.cancel()
         removeOverlay()
-        handler.post { launchCommittedApp(entry) }
+        handler.post {
+            if (generation == pointerGeneration) launchCommittedApp(entry)
+        }
     }
 
     private fun launchCommittedApp(entry: RadialAppEntry) {
+        if (!isGestureEnvironmentAllowed()) return
         when (val result = launcher.launch(entry.component)) {
             FreeformLaunchResult.Started -> Unit
             FreeformLaunchResult.TargetUnavailable ->
@@ -383,6 +398,10 @@ internal class ColorOsFreeformCoordinator(
     }
 
     override fun onMorePanelRequested() {
+        if (!isGestureEnvironmentAllowed()) {
+            removeOverlay()
+            return
+        }
         val view = overlay ?: return
         morePanelActive = true
         activeEnvironmentApproved = false
@@ -487,11 +506,11 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun isGestureEnvironmentAllowed(): Boolean {
-        if (!environmentState.isAllowed(refreshKeyguard = true)) return false
+        if (!environmentState.isGestureAllowed(refreshKeyguard = true)) return false
         return !isCriticalSystemUiForeground()
     }
 
-    private fun isDynamicEnvironmentAllowed(): Boolean = environmentState.isAllowed()
+    private fun isDynamicEnvironmentAllowed(): Boolean = environmentState.isGestureAllowed()
 
     private fun isCriticalSystemUiForeground(): Boolean {
         focusedWindowPackage()?.let { packageName ->
@@ -556,6 +575,8 @@ internal class ColorOsFreeformCoordinator(
         }
         throw NoSuchMethodException(name)
     }
+
+    private data class QueuedPointerEvent(val event: MotionEvent, val generation: Long)
 
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"

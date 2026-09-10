@@ -11,10 +11,13 @@ internal class SystemServerHookInstaller(
     private val configuration: ProcessConfiguration,
 ) {
     private val bound = AtomicBoolean(false)
+    private val environment = ModuleEnvironmentState(configuration) { code, exception ->
+        module.log(Log.WARN, TAG, code, exception)
+    }
 
     fun install(classLoader: ClassLoader) {
-        OutsideTapCloseHookInstaller(module, configuration).install(classLoader)
-        HandleSwipeUpHookInstaller(module, configuration).install(classLoader)
+        OutsideTapCloseHookInstaller(module, configuration, environment).install(classLoader)
+        HandleSwipeUpHookInstaller(module, configuration, environment).install(classLoader)
         try {
             val controllerClass = classLoader.loadClass(FLEXIBLE_TASK_CONTROLLER_CLASS)
             val systemReady = controllerClass.getDeclaredMethod("systemReady", Boolean::class.javaPrimitiveType)
@@ -30,6 +33,7 @@ internal class SystemServerHookInstaller(
                             controller = controller,
                             classLoader = classLoader,
                             configuration = configuration,
+                            environmentState = environment,
                             logger = { priority, code, throwable ->
                                 module.log(priority, TAG, code, throwable)
                             },

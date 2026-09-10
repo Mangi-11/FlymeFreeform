@@ -27,6 +27,8 @@ import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ElectricalServices
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.SwipeLeft
 import androidx.compose.material.icons.rounded.SwipeRight
@@ -87,6 +89,8 @@ internal fun ControlScreen(
     onCornerTriggerRangeChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    onPauseInLandscapeChange: (Boolean) -> Unit,
+    onPauseInGameModeChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
     onNavigateToPinnedApps: () -> Unit,
 ) {
@@ -167,6 +171,9 @@ internal fun ControlScreen(
                                 onHandleSwipeUpToMiniEnabledChange,
                         )
                     }
+                    item(key = "environment") {
+                        EnvironmentCard(state, onPauseInLandscapeChange, onPauseInGameModeChange)
+                    }
                     item(key = "about") { AboutCard() }
                 }
             }
@@ -178,6 +185,32 @@ internal fun ControlScreen(
                 rightEnabled = state.settings.rightCornerEnabled,
             )
         }
+    }
+}
+
+@Composable
+private fun EnvironmentCard(
+    state: FrameworkConnectionState,
+    onPauseInLandscapeChange: (Boolean) -> Unit,
+    onPauseInGameModeChange: (Boolean) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        SwitchPreference(
+            checked = state.settings.pauseInLandscape,
+            onCheckedChange = onPauseInLandscapeChange,
+            title = stringResource(R.string.pause_in_landscape_title),
+            summary = stringResource(R.string.pause_in_landscape_summary),
+            enabled = state.canChangeSettings,
+            startAction = { PreferenceIcon(Icons.Rounded.ScreenRotation, state.canChangeSettings) },
+        )
+        SwitchPreference(
+            checked = state.settings.pauseInGameMode,
+            onCheckedChange = onPauseInGameModeChange,
+            title = stringResource(R.string.pause_in_game_mode_title),
+            summary = stringResource(R.string.pause_in_game_mode_summary),
+            enabled = state.canChangeSettings,
+            startAction = { PreferenceIcon(Icons.Rounded.SportsEsports, state.canChangeSettings) },
+        )
     }
 }
 

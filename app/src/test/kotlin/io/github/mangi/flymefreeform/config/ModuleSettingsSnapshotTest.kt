@@ -14,6 +14,8 @@ class ModuleSettingsSnapshotTest {
         assertEquals(84, snapshot.cornerTriggerRangeDp)
         assertEquals(OutsideTapCloseMode.SingleTap, snapshot.outsideTapCloseMode)
         assertTrue(snapshot.handleSwipeUpToMiniEnabled)
+        assertTrue(snapshot.pauseInLandscape)
+        assertTrue(snapshot.pauseInGameMode)
     }
 
     @Test
@@ -46,6 +48,41 @@ class ModuleSettingsSnapshotTest {
 
         assertEquals(OutsideTapCloseMode.DoubleTap, restored.outsideTapCloseMode)
         assertFalse(restored.handleSwipeUpToMiniEnabled)
+    }
+
+    @Test
+    fun pauseSwitchesRoundTripIndependently() {
+        for (landscape in listOf(false, true)) {
+            for (game in listOf(false, true)) {
+                val preferences = InMemoryPreferences()
+                val expected = ModuleSettingsSnapshot(
+                    enabled = true,
+                    pauseInLandscape = landscape,
+                    pauseInGameMode = game,
+                )
+                expected.writeTo(preferences.edit()).commit()
+                assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+            }
+        }
+    }
+
+    @Test
+    fun eitherEnabledPauseRuleBlocksItsEnvironment() {
+        val defaults = ModuleSettingsSnapshot()
+        assertFalse(defaults.isPausedByEnvironment(landscape = false, gameMode = false))
+        assertTrue(defaults.isPausedByEnvironment(landscape = true, gameMode = false))
+        assertTrue(defaults.isPausedByEnvironment(landscape = false, gameMode = true))
+
+        val allowLandscape = defaults.copy(pauseInLandscape = false)
+        assertFalse(allowLandscape.isPausedByEnvironment(landscape = true, gameMode = false))
+        assertTrue(allowLandscape.isPausedByEnvironment(landscape = true, gameMode = true))
+
+        val allowGames = defaults.copy(pauseInGameMode = false)
+        assertFalse(allowGames.isPausedByEnvironment(landscape = false, gameMode = true))
+        assertTrue(allowGames.isPausedByEnvironment(landscape = true, gameMode = true))
+
+        val allowBoth = defaults.copy(pauseInLandscape = false, pauseInGameMode = false)
+        assertFalse(allowBoth.isPausedByEnvironment(landscape = true, gameMode = true))
     }
 
     @Test

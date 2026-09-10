@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class HandleSwipeUpHookInstaller(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
+    private val environment: ModuleEnvironmentState,
 ) {
     private val remapLogged = AtomicBoolean(false)
     private var lastFailureLogAt = -FAILURE_LOG_INTERVAL_MS
@@ -49,7 +50,7 @@ internal class HandleSwipeUpHookInstaller(
                     val originalResult = chain.proceed()
                     val originalMode = (originalResult as? Number)?.toInt() ?: return@intercept originalResult
                     val settings = configuration.snapshot
-                    if (!settings.enabled || !settings.handleSwipeUpToMiniEnabled) {
+                    if (!environment.isModuleAllowed() || !settings.handleSwipeUpToMiniEnabled) {
                         return@intercept originalResult
                     }
                     val actionFlag = (chain.getArg(1) as? Number)?.toInt() ?: return@intercept originalResult

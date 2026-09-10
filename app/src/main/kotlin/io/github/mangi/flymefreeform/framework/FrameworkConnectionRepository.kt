@@ -66,6 +66,12 @@ internal class FrameworkConnectionRepository {
     fun setHandleSwipeUpToMiniEnabled(enabled: Boolean) =
         updateSettings { it.copy(handleSwipeUpToMiniEnabled = enabled) }
 
+    fun setPauseInLandscape(enabled: Boolean) =
+        updateSettings { it.copy(pauseInLandscape = enabled) }
+
+    fun setPauseInGameMode(enabled: Boolean) =
+        updateSettings { it.copy(pauseInGameMode = enabled) }
+
     fun setPinnedComponents(components: List<ComponentName>) =
         updateSettings {
             it.copy(

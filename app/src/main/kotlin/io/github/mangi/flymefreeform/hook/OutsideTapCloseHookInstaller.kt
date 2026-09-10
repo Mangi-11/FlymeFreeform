@@ -28,6 +28,7 @@ import kotlin.math.floor
 internal class OutsideTapCloseHookInstaller(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
+    private val environment: ModuleEnvironmentState,
 ) {
     private var lastFailureLogAt = -FAILURE_LOG_INTERVAL_MS
 
@@ -52,6 +53,7 @@ internal class OutsideTapCloseHookInstaller(
                     windowStateClass = windowStateClass,
                     captionClass = captionClass,
                     onFailure = ::logFailure,
+                    environmentAllowed = environment::isModuleAllowed,
                 )
             module
                 .hook(updateTouchableRegion)
@@ -80,6 +82,7 @@ internal class OutsideTapCloseHookInstaller(
                     result
                 }
             configuration.observe(access::onConfigurationChanged)
+            environment.observe { access.onConfigurationChanged(configuration.snapshot) }
             module
                 .hook(onPointerEvent)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -138,6 +141,7 @@ internal class OutsideTapCloseHookInstaller(
         windowStateClass: Class<*>,
         captionClass: Class<*>,
         private val onFailure: (String, Throwable) -> Unit,
+        private val environmentAllowed: () -> Boolean,
     ) {
         private val controllerField = listenerClass.requiredField("this$0")
         private val contextField = controllerClass.requiredField("mContext")
@@ -205,7 +209,7 @@ internal class OutsideTapCloseHookInstaller(
                     onFailure("OUTSIDE_TAP_REGION_REFRESH_FAILED", exception)
                 }
             }
-            if (!settings.enabled || settings.outsideTapCloseMode == OutsideTapCloseMode.Disabled) {
+            if (!environmentAllowed() || !settings.enabled || settings.outsideTapCloseMode == OutsideTapCloseMode.Disabled) {
                 synchronized(protectedTasks) { protectedTasks.clear() }
             }
         }
@@ -219,7 +223,7 @@ internal class OutsideTapCloseHookInstaller(
             val task = captionTaskField.get(caption) ?: return clearProtection(caption)
             val controller = captionControllerField.get(caption) ?: return clearProtection(caption)
             val mode =
-                if (settings.enabled) settings.outsideTapCloseMode
+                if (settings.enabled && environmentAllowed()) settings.outsideTapCloseMode
                 else OutsideTapCloseMode.Disabled
             if (
                 mode == OutsideTapCloseMode.Disabled ||
@@ -360,7 +364,7 @@ internal class OutsideTapCloseHookInstaller(
             synchronized(engines) {
                 val engine = engines.getOrPut(listener) { OutsideTapGestureEngine() }
                 val mode =
-                    if (settings.enabled) settings.outsideTapCloseMode
+                    if (settings.enabled && environmentAllowed()) settings.outsideTapCloseMode
                     else OutsideTapCloseMode.Disabled
                 engine.updateMode(mode)
                 if (mode == OutsideTapCloseMode.Disabled) return@synchronized null
@@ -394,6 +398,7 @@ internal class OutsideTapCloseHookInstaller(
         }
 
         fun closeIfStillValid(listener: Any, task: Any) {
+            if (!environmentAllowed()) return
             val controller = controllerField.get(listener) ?: return
             if (getTopZoomTask.invokeUnwrapped(controller) !== task || !isOrdinaryZoom(controller, task)) {
                 return

@@ -71,4 +71,8 @@
     <string name="implementation_principle_summary">直接使用当前 ColorOS 已有自由窗能力，只调整快捷入口与交互编排，不另建窗口引擎。</string>
     <string name="independent_project_title">非官方独立实现</string>
     <string name="independent_project_summary">本项目与魅族、Flyme、OPPO、ColorOS 及其关联方无关，不代表任何官方授权或背书。</string>
+    <string name="pause_in_landscape_title">横屏时暂停</string>
+    <string name="pause_in_landscape_summary">横屏时暂停模块增强，恢复竖屏后自动启用</string>
+    <string name="pause_in_game_mode_title">游戏模式时暂停</string>
+    <string name="pause_in_game_mode_summary">系统进入游戏模式时暂停模块增强，退出后自动启用</string>
 </resources>

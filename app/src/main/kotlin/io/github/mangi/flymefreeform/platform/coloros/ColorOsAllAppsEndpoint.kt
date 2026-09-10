@@ -21,6 +21,7 @@ import android.provider.Settings
 import android.util.Log
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
+import io.github.mangi.flymefreeform.hook.ModuleEnvironmentState
 import io.github.mangi.flymefreeform.window.AllAppsActionHandoff
 
 /** 受系统服务权限及 UID 双重约束的打开协议；图标、条目与执行对象始终留在侧边栏进程。 */
@@ -31,6 +32,9 @@ internal class ColorOsAllAppsEndpoint(
     private val log: (Int, String, Throwable?) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
+    private val environment = ModuleEnvironmentState(configuration) { code, exception ->
+        log(Log.WARN, code, exception)
+    }
     private val messenger = Messenger(Handler(Looper.getMainLooper(), ::receive))
     private var request: Request? = null
     private var lastResult: Pair<String, Int>? = null
@@ -41,7 +45,9 @@ internal class ColorOsAllAppsEndpoint(
     private var lastFailure = -5_000L
     private val tick = Runnable { advance() }
     private val refresh = Runnable { safely { request?.content?.refresh() } }
-    private val settingsObserver: (ModuleSettingsSnapshot) -> Unit = { if (!it.enabled) handler.post { cancel() } }
+    private val settingsObserver: (ModuleSettingsSnapshot) -> Unit = {
+        handler.post { if (!environment.isGestureAllowed()) cancel() }
+    }
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) = cancel()
     }
@@ -58,7 +64,11 @@ internal class ColorOsAllAppsEndpoint(
 
     val binder: IBinder get() = messenger.binder
 
-    init { configuration.observe(settingsObserver) }
+    init {
+        environment.start(service)
+        environment.observe { if (!environment.isGestureAllowed()) cancel() }
+        configuration.observe(settingsObserver)
+    }
 
     fun onUnbound(id: String?) {
         request?.takeIf { it.id == id && it.phase != Phase.Active }?.let { finish(it, SidebarProtocol.ABORTED) }
@@ -96,6 +106,7 @@ internal class ColorOsAllAppsEndpoint(
         cancel()
         handler.removeCallbacksAndMessages(null)
         configuration.removeObserver(settingsObserver)
+        environment.close()
     }
 
     private fun receive(message: Message): Boolean {
@@ -212,6 +223,10 @@ internal class ColorOsAllAppsEndpoint(
     private fun advance(): Unit = safely {
         handler.removeCallbacks(tick)
         val current = request ?: return@safely
+        if (!environmentAllowed()) {
+            finish(current, SidebarProtocol.ABORTED)
+            return@safely
+        }
         if (current.phase == Phase.Active) return@safely
         if (SystemClock.uptimeMillis() >= current.deadline) {
             finish(current, SidebarProtocol.CLEANED)
@@ -236,7 +251,7 @@ internal class ColorOsAllAppsEndpoint(
     }
 
     private fun environmentAllowed(): Boolean =
-        configuration.isAvailable && configuration.snapshot.enabled &&
+        environment.isGestureAllowed(refreshKeyguard = true) &&
             service.getSystemService(UserManager::class.java)?.isUserForeground == true &&
             service.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false &&
             Settings.Secure.getInt(service.contentResolver, "edge_panel_toggle", -1) == 1

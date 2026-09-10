@@ -14,12 +14,19 @@ internal data class ModuleSettingsSnapshot(
         ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
     val handleSwipeUpToMiniEnabled: Boolean =
         ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
+    val pauseInLandscape: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_LANDSCAPE,
+    val pauseInGameMode: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_GAME_MODE,
 ) {
+    fun isPausedByEnvironment(landscape: Boolean, gameMode: Boolean): Boolean =
+        (pauseInLandscape && landscape) || (pauseInGameMode && gameMode)
+
     fun writeTo(editor: SharedPreferences.Editor): SharedPreferences.Editor {
         editor
             .putBoolean(ModulePreferences.KEY_MODULE_ENABLED, enabled)
             .putBoolean(ModulePreferences.KEY_LEFT_CORNER_ENABLED, leftCornerEnabled)
             .putBoolean(ModulePreferences.KEY_RIGHT_CORNER_ENABLED, rightCornerEnabled)
+            .putBoolean(ModulePreferences.KEY_PAUSE_IN_LANDSCAPE, pauseInLandscape)
+            .putBoolean(ModulePreferences.KEY_PAUSE_IN_GAME_MODE, pauseInGameMode)
             .putInt(
                 ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP,
                 ModulePreferences.coerceCornerTriggerRangeDp(cornerTriggerRangeDp),
@@ -97,6 +104,14 @@ internal data class ModuleSettingsSnapshot(
                 pinnedComponents = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
+                pauseInLandscape = preferences.getBoolean(
+                    ModulePreferences.KEY_PAUSE_IN_LANDSCAPE,
+                    ModulePreferences.DEFAULT_PAUSE_IN_LANDSCAPE,
+                ),
+                pauseInGameMode = preferences.getBoolean(
+                    ModulePreferences.KEY_PAUSE_IN_GAME_MODE,
+                    ModulePreferences.DEFAULT_PAUSE_IN_GAME_MODE,
+                ),
             )
         }
 

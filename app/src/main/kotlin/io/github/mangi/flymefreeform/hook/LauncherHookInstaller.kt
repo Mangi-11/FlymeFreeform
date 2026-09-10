@@ -2,6 +2,8 @@ package io.github.mangi.flymefreeform.hook
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
@@ -26,7 +28,11 @@ internal class LauncherHookInstaller(
     private val configuration: ProcessConfiguration,
 ) {
     private val gestureEngine = CornerGestureEngine()
-    private var environmentState: GestureEnvironmentState? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val environmentState = ModuleEnvironmentState(configuration) { code, exception ->
+        module.log(Log.WARN, TAG, code, exception)
+    }
+    private var environmentStarted = false
     private var activeConfig: CornerGestureConfig? = null
     private var activePointerId = -1
     private var suppressUntilTerminal = false
@@ -89,6 +95,8 @@ internal class LauncherHookInstaller(
         }
         if (!suppressUntilTerminal) return false
 
+        if (!environmentState.isGestureAllowed()) cancelClaim()
+
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
                 val config = activeConfig
@@ -135,14 +143,13 @@ internal class LauncherHookInstaller(
         if (!configuration.isAvailable || !settings.enabled) return null
         if (!event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) return null
         if (event.pointerCount != 1 || event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return null
-        val environment =
-            environmentState ?: GestureEnvironmentState(owner).also { environmentState = it }
-        if (!environment.isAllowed(refreshKeyguard = true)) return null
+        startEnvironment(owner)
+        if (!environmentState.isGestureAllowed(refreshKeyguard = true)) return null
 
         val metrics = owner.resources.displayMetrics
         val width = metrics.widthPixels.toFloat()
         val height = metrics.heightPixels.toFloat()
-        if (width <= 0f || height <= 0f || width > height) return null
+        if (width <= 0f || height <= 0f) return null
         return AdaptiveCornerGestureConfig.create(
             displayWidth = width,
             displayHeight = height,
@@ -170,6 +177,27 @@ internal class LauncherHookInstaller(
         activePointerId = -1
         suppressUntilTerminal = false
         pilfered = false
+    }
+
+    private fun startEnvironment(owner: Context) {
+        if (environmentStarted) return
+        environmentStarted = true
+        val start = {
+            environmentState.start(owner)
+            environmentState.observe {
+                if (!environmentState.isGestureAllowed()) cancelClaim()
+            }
+            configuration.observe {
+                mainHandler.post { if (!environmentState.isGestureAllowed()) cancelClaim() }
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) start() else mainHandler.post { start() }
+    }
+
+    private fun cancelClaim() {
+        gestureEngine.cancel()
+        activeConfig = null
+        // 已拦下 DOWN 的旧流继续收尾，不能把缺少 DOWN 的 MOVE/UP 交回桌面。
     }
 
     private fun forcePilferPointers(owner: Context) {

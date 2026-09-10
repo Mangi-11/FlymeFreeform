@@ -33,6 +33,8 @@ internal fun FlymeFreeformNavHost(
     onCornerTriggerRangeChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    onPauseInLandscapeChange: (Boolean) -> Unit,
+    onPauseInGameModeChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
     onPinnedComponentsChange: (List<ComponentName>) -> Unit,
 ) {
@@ -69,6 +71,8 @@ internal fun FlymeFreeformNavHost(
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,
+                        onPauseInLandscapeChange = onPauseInLandscapeChange,
+                        onPauseInGameModeChange = onPauseInGameModeChange,
                         onRequestScopes = onRequestScopes,
                         onNavigateToPinnedApps = navigateToPinnedApps,
                     )

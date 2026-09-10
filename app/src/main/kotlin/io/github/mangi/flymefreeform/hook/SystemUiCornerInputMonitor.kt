@@ -41,7 +41,9 @@ internal class SystemUiCornerInputMonitor(
     private val inputManager =
         context.getSystemService(InputManager::class.java)
             ?: error("InputManager unavailable")
-    private val environmentState = GestureEnvironmentState(context)
+    private val environmentState = ModuleEnvironmentState(configuration) { code, exception ->
+        module.log(Log.WARN, TAG, code, exception)
+    }
     private val inputFeaturesField: Field =
         WindowManager.LayoutParams::class.java.getField("inputFeatures").apply {
             isAccessible = true
@@ -65,6 +67,8 @@ internal class SystemUiCornerInputMonitor(
     private var lastPilferFailureAt = -PILFER_FAILURE_LOG_INTERVAL_MS
 
     fun start() {
+        environmentState.start(context)
+        environmentState.observe { applySettings(configuration.snapshot) }
         configuration.observe { snapshot ->
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 acceptSettings(snapshot)
@@ -76,7 +80,7 @@ internal class SystemUiCornerInputMonitor(
 
     private fun acceptSettings(snapshot: ModuleSettingsSnapshot) {
         ensureMainThread()
-        if (bindings.values.any { it.view.streamActive }) {
+        if (environmentState.isGestureAllowed() && bindings.values.any { it.view.streamActive }) {
             pendingSettings = snapshot
             return
         }
@@ -87,8 +91,9 @@ internal class SystemUiCornerInputMonitor(
         ensureMainThread()
         settings = snapshot
         pendingSettings = null
-        updateSide(CornerSide.Left, snapshot.enabled && snapshot.leftCornerEnabled)
-        updateSide(CornerSide.Right, snapshot.enabled && snapshot.rightCornerEnabled)
+        val allowed = environmentState.isGestureAllowed(refreshKeyguard = true)
+        updateSide(CornerSide.Left, allowed && snapshot.leftCornerEnabled)
+        updateSide(CornerSide.Right, allowed && snapshot.rightCornerEnabled)
     }
 
     private fun updateSide(side: CornerSide, shouldExist: Boolean) {
@@ -160,7 +165,7 @@ internal class SystemUiCornerInputMonitor(
                 CornerSide.Left -> settings.leftCornerEnabled
                 CornerSide.Right -> settings.rightCornerEnabled
             } &&
-            environmentState.isAllowed(refreshKeyguard = true)
+            environmentState.isGestureAllowed(refreshKeyguard = true)
 
     private fun pilfer(view: View): Boolean =
         try {
@@ -300,6 +305,11 @@ internal class SystemUiCornerInputMonitor(
 
                 MotionEvent.ACTION_MOVE -> {
                     if (tracking) {
+                        if (!canClaim()) {
+                            resetTracking()
+                            onStreamFinished()
+                            return true
+                        }
                         val config = activeConfig
                         val pointerIndex = event.findPointerIndex(activePointerId)
                         val action =

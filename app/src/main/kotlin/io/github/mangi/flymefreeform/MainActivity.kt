@@ -37,6 +37,8 @@ class MainActivity : ComponentActivity() {
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,
+                    onPauseInLandscapeChange = repository::setPauseInLandscape,
+                    onPauseInGameModeChange = repository::setPauseInGameMode,
                     onRequestScopes = repository::requestMissingScopes,
                     onPinnedComponentsChange = repository::setPinnedComponents,
                 )
