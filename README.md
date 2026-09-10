@@ -37,6 +37,12 @@
 
 完整照搬另一套系统的界面，容易造成视觉与操作上的割裂；另建一套小窗能力，也会增加系统适配与后续维护的成本。因此，我们保留 Flyme 的交互巧思，同时沿用 ColorOS 的界面与窗口能力，让这份体验自然融入当前系统。
 
+## 致谢
+
+- [Flyme](https://www.flyme.com/)：感谢其小窗细腻的设计与交互巧思。
+- [libxposed API](https://github.com/libxposed/api)：现代 Xposed API。
+- [Miuix](https://github.com/compose-miuix-ui/miuix)：UI 组件库。
+
 ## 许可证
 
 本项目基于 GPL-3.0 开源，详情请参阅 [LICENSE](LICENSE)。
