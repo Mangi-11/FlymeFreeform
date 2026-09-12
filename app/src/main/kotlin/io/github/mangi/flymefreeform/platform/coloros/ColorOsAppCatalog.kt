@@ -234,7 +234,7 @@ internal class ColorOsAppCatalog(
             activityManager.getRecentTasks(RECENT_LIMIT, ActivityManager.RECENT_WITH_EXCLUDED)
                 .mapNotNull { task ->
                     val component = task.origActivity ?: task.baseIntent.component ?: return@mapNotNull null
-                    AppTarget(component, taskUserIdentifier(task))
+                    AppTarget(component, task.taskUserIdentifier())
                 }
                 .filterNot { target -> target.component.packageName == context.packageName }
         } catch (_: SecurityException) {
@@ -243,18 +243,6 @@ internal class ColorOsAppCatalog(
             emptyList()
         }
     }
-
-    private fun taskUserIdentifier(task: ActivityManager.RecentTaskInfo): Int =
-        try {
-            task.javaClass
-                .getDeclaredField("userId")
-                .also { it.isAccessible = true }
-                .getInt(task)
-        } catch (_: ReflectiveOperationException) {
-            Process.myUserHandle().identifier
-        } catch (_: RuntimeException) {
-            Process.myUserHandle().identifier
-        }
 
     private fun toEntry(target: AppTarget, info: LauncherActivityInfo): RadialAppEntry? =
         try {

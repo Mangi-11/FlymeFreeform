@@ -1,19 +1,24 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.os.UserHandle
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import io.github.mangi.flymefreeform.apps.AppTarget
+import io.github.mangi.flymefreeform.apps.identifier
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
@@ -388,12 +393,38 @@ internal class ColorOsFreeformCoordinator(
 
     private fun launchCommittedApp(entry: RadialAppEntry) {
         if (!isGestureEnvironmentAllowed()) return
+        val decision = resolveParallelDecision(entry.target)
+        val enabled = ParallelWindowPolicy.ENABLED
+        val flexible = enabled && decision != ParallelWindowPolicy.Decision.Normal
+        var newInstance = enabled && decision == ParallelWindowPolicy.Decision.FlexibleNewInstance
+        var reuseTaskId: Int? = null
+        if (enabled && decision == ParallelWindowPolicy.Decision.FlexibleReuse) {
+            // 复用路径不能靠普通启动：系统会把"当前聚焦的二级界面 task"缩成小窗，而不是复用主界面。
+            // 这里直接把启动锁进已有的主界面 task（按 userId 查，主应用与分身各自独立），
+            // 系统就不会再新建实例，多任务里也不会越堆越多。
+            reuseTaskId = findMainSurfaceTaskId(entry.target)
+            if (reuseTaskId == null) {
+                logger(Log.WARN, "PARALLEL_REUSE_TASK_MISSING user=${entry.target.userId}", null)
+                newInstance = true
+            }
+        }
         logger(
             Log.INFO,
-            "FREEFORM_LAUNCH_REQUEST user=${entry.target.userId} target=${entry.target.component.flattenToShortString()}",
+            "FREEFORM_LAUNCH_REQUEST user=${entry.target.userId} " +
+                "mode=${if (flexible) "flexible" else "normal"} " +
+                "newInstance=$newInstance reuseTaskId=${reuseTaskId ?: NO_SOURCE_TASK} " +
+                "target=${entry.target.component.flattenToShortString()}",
             null,
         )
-        when (val result = launcher.launch(entry.target)) {
+        when (
+            val result =
+                launcher.launch(
+                    entry.target,
+                    newInstance = newInstance,
+                    flexible = flexible,
+                    reuseTaskId = reuseTaskId,
+                )
+        ) {
             is FreeformLaunchResult.Started ->
                 logger(
                     Log.INFO,
@@ -405,6 +436,165 @@ internal class ColorOsFreeformCoordinator(
             is FreeformLaunchResult.Failed ->
                 logger(Log.WARN, result.diagnosticCode, result.cause)
         }
+    }
+
+    /**
+     * 微信停在二级界面（朋友圈、视频号、转发等）时，决定这次启动怎么开小窗。
+     * 一级/聊天界面、其他应用、以及前台状态读不到时都返回 [ParallelWindowPolicy.Decision.Normal]。
+     */
+    private fun resolveParallelDecision(target: AppTarget): ParallelWindowPolicy.Decision =
+        try {
+            if (!ParallelWindowPolicy.isTarget(target.component.packageName)) {
+                ParallelWindowPolicy.Decision.Normal
+            } else {
+                val focused = focusedTopActivity(target.component)
+                val decision =
+                    ParallelWindowPolicy.decide(
+                        targetPackage = target.component.packageName,
+                        targetUserId = target.userId,
+                        targetLauncherClass = target.component.className,
+                        focusedPackage = focused?.packageName,
+                        focusedUserId = focused?.userId,
+                        focusedClassName = focused?.className,
+                        focusedTaskHasLauncher = focused?.taskContainsLauncher == true,
+                    )
+                logger(
+                    Log.INFO,
+                    "PARALLEL_GATE target=${target.storageKey} focused=${focused?.logLabel ?: "none"} " +
+                        "userIdSource=${focused?.userIdSource ?: "none"} " +
+                        "taskActivities=${focused?.activityCount ?: -1} " +
+                        "taskHasLauncher=${focused?.taskContainsLauncher ?: false} " +
+                        "decision=$decision enabled=${ParallelWindowPolicy.ENABLED}",
+                    null,
+                )
+                decision
+            }
+        } catch (exception: ReflectiveOperationException) {
+            logger(Log.WARN, "PARALLEL_GATE_UNAVAILABLE", exception)
+            ParallelWindowPolicy.Decision.Normal
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "PARALLEL_GATE_UNAVAILABLE", exception)
+            ParallelWindowPolicy.Decision.Normal
+        }
+
+    /** 显示器聚焦 root task 的栈顶 activity；分身用户的 task 同样取得到。 */
+    private fun focusedTopActivity(launcherComponent: ComponentName): FocusedTop? {
+        val atms = readField(controller, "mAtms") ?: return null
+        val root = readField(atms, "mRootWindowContainer") ?: return null
+        val task = findMethod(root.javaClass, "getTopDisplayFocusedRootTask", 0).invoke(root) ?: return null
+        val activity = findMethod(task.javaClass, "topRunningActivity", 0).invoke(task) ?: return null
+        val component = readField(activity, "mActivityComponent") as? ComponentName
+        val (userId, userIdSource) = focusedUserId(activity, task)
+        val activities = taskActivities(task)
+        return FocusedTop(
+            packageName = component?.packageName,
+            className = component?.className,
+            userId = userId,
+            userIdSource = userIdSource,
+            activityCount = activities.size,
+            taskContainsLauncher = activities.any { record ->
+                (readField(record, "mActivityComponent") as? ComponentName) == launcherComponent
+            },
+        )
+    }
+
+    /**
+     * 聚焦 task 里的 activity 列表：各版本字段名不一致（`mActivities` / `mChildren` / …），
+     * 因此先试已知名字，再扫描所有集合字段挑出真正装着 ActivityRecord 的那个。
+     */
+    private fun taskActivities(task: Any): List<Any> {
+        listOf("mActivities", "mChildren").forEach { name ->
+            val value = readField(task, name) as? List<*> ?: return@forEach
+            val records = value.filterNotNull().filter { item -> readField(item, "mActivityComponent") != null }
+            if (records.isNotEmpty()) return records
+        }
+        var current: Class<*>? = task.javaClass
+        while (current != null && current != Any::class.java) {
+            for (field in current.declaredFields) {
+                val value =
+                    try {
+                        field.isAccessible = true
+                        field.get(task) as? List<*>
+                    } catch (_: ReflectiveOperationException) {
+                        null
+                    } catch (_: RuntimeException) {
+                        null
+                    } ?: continue
+                val records = value.filterNotNull().filter { item -> readField(item, "mActivityComponent") != null }
+                if (records.isNotEmpty()) return records
+            }
+            current = current.superclass
+        }
+        return emptyList()
+    }
+
+    /** `ActivityRecord` 没有稳定的 userId 字段名，按可用性依次尝试并记录来源。 */
+    private fun focusedUserId(activity: Any, task: Any): Pair<Int?, String> {
+        val uid = (readField(activity, "info") as? ActivityInfo)?.applicationInfo?.uid
+        if (uid != null) {
+            return UserHandle.getUserHandleForUid(uid).identifier to USER_ID_SOURCE_ACTIVITY_INFO
+        }
+        (readField(activity, "mUserId") as? Int)?.let { return it to USER_ID_SOURCE_ACTIVITY_FIELD }
+        (readField(task, "mUserId") as? Int)?.let { return it to USER_ID_SOURCE_TASK_FIELD }
+        return null to USER_ID_SOURCE_UNKNOWN
+    }
+
+    /**
+     * 已有的主界面 task id：按 `userId` 在窗口容器树里找，主应用与分身各找各的。
+     * 找不到时返回 null，调用方退回"新开实例"以保证小窗至少能出现。
+     */
+    private fun findMainSurfaceTaskId(target: AppTarget): Int? =
+        try {
+            val task = findMainSurfaceTask(target) ?: return null
+            val taskId = readField(task, "mTaskId") as? Int
+            logger(
+                Log.INFO,
+                "PARALLEL_REUSE_TASK user=${target.userId} taskId=${taskId ?: NO_SOURCE_TASK}",
+                null,
+            )
+            taskId
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "PARALLEL_REUSE_TASK_FAILED user=${target.userId}", exception)
+            null
+        }
+
+    /**
+     * 在窗口容器树里找"目标用户 + 仍含主界面组件"的 WeChat task。
+     * 走到 Task 层用 `mTaskId` / `mUserId` 判定，跨用户（含分身）都能找到。
+     */
+    private fun findMainSurfaceTask(target: AppTarget): Any? {
+        val atms = readField(controller, "mAtms") ?: return null
+        val root = readField(atms, "mRootWindowContainer") ?: return null
+        val pending = ArrayDeque<Any>()
+        pending += root
+        val visited = HashSet<Int>()
+        while (pending.isNotEmpty()) {
+            val node = pending.removeFirst()
+            if (!visited.add(System.identityHashCode(node))) continue
+            if (readField(node, "mTaskId") is Int && readField(node, "mUserId") == target.userId) {
+                val containsLauncher =
+                    taskActivities(node).any { record ->
+                        (readField(record, "mActivityComponent") as? ComponentName) == target.component
+                    }
+                if (containsLauncher) return node
+            }
+            (readField(node, "mChildren") as? List<*>)?.forEach { child ->
+                if (child != null) pending += child
+            }
+        }
+        return null
+    }
+
+    private data class FocusedTop(
+        val packageName: String?,
+        val className: String?,
+        val userId: Int?,
+        val userIdSource: String,
+        val activityCount: Int,
+        val taskContainsLauncher: Boolean,
+    ) {
+        val logLabel: String
+            get() = "${packageName ?: "?"}/${className ?: "?"}@u${userId ?: UNKNOWN_USER}"
     }
 
     override fun onMorePanelRequested() {
@@ -591,6 +781,12 @@ internal class ColorOsFreeformCoordinator(
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
+        const val UNKNOWN_USER = -1
+        const val NO_SOURCE_TASK = -1
+        const val USER_ID_SOURCE_ACTIVITY_INFO = "activityInfo"
+        const val USER_ID_SOURCE_ACTIVITY_FIELD = "activityField"
+        const val USER_ID_SOURCE_TASK_FIELD = "taskField"
+        const val USER_ID_SOURCE_UNKNOWN = "unknown"
         val CRITICAL_PACKAGES =
             setOf(
                 "com.android.systemui",
