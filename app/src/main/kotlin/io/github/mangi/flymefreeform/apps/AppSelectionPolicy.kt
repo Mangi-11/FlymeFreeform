@@ -10,9 +10,9 @@ internal object AppSelectionPolicy {
         limit: Int,
     ): List<T> =
         if (pinsSaved) {
-            availablePins.distinctBy(identity).take(limit)
+            (availablePins + recent).distinctBy(identity).take(limit)
         } else {
-            recent.distinctBy(identity).take(limit)
+            (recent + all).distinctBy(identity).take(limit)
         }
 
     fun <T> panelItems(
