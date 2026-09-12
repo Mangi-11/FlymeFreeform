@@ -16,7 +16,7 @@ class FlymeFreeformApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        frameworkConnectionRepository = FrameworkConnectionRepository().also { it.start() }
+        frameworkConnectionRepository = FrameworkConnectionRepository(this).also { it.start() }
         sidebarEntryRepository = SidebarEntryRepository(this)
         launcherAppRepository = LauncherAppRepository(this).also { it.refresh() }
     }

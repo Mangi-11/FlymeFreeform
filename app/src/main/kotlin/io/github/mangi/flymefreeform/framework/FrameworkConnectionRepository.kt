@@ -1,5 +1,7 @@
 package io.github.mangi.flymefreeform.framework
 
+import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
@@ -7,6 +9,7 @@ import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.config.PinnedTarget
+import io.github.mangi.flymefreeform.config.PinnedTargetCodec
 import java.util.IdentityHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -15,7 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Service 102 的进程级所有者；所有同步 Binder 调用都串行限制在单一后台线程。 */
-internal class FrameworkConnectionRepository {
+internal class FrameworkConnectionRepository(private val context: Context) {
     private val started = AtomicBoolean(false)
     private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, WORKER_THREAD_NAME) }
     private val liveServices = IdentityHashMap<XposedService, Unit>()
@@ -129,9 +132,31 @@ internal class FrameworkConnectionRepository {
                 val confirmed = previous.copy(settings = next, isUpdating = false, issue = null)
                 activeConnection = connection.copy(confirmedState = confirmed)
                 mutableState.value = confirmed
+                if (next.pinsSaved != previous.settings.pinsSaved ||
+                    next.pinnedTargets != previous.settings.pinnedTargets
+                ) {
+                    notifyPinnedTargetsChanged(next)
+                }
             } else {
                 isolateFailedConnection(connection, previous)
             }
+        }
+    }
+
+    private fun notifyPinnedTargetsChanged(settings: ModuleSettingsSnapshot) {
+        val intent = Intent(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED).apply {
+            putExtra(
+                ModulePreferences.EXTRA_PINNED_TARGETS,
+                PinnedTargetCodec.encodeList(settings.pinnedTargets),
+            )
+            putExtra(ModulePreferences.EXTRA_PINS_SAVED, settings.pinsSaved)
+            putExtra(ModulePreferences.EXTRA_MODULE_ENABLED, settings.enabled)
+        }
+        try {
+            context.sendBroadcast(intent.setPackage("android"))
+            context.sendBroadcast(intent.setPackage("com.coloros.smartsidebar"))
+        } catch (_: RuntimeException) {
+            // Remote preference commit remains authoritative if a target process is unavailable.
         }
     }
 

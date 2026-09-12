@@ -16,6 +16,7 @@ import android.os.SystemClock
 import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
+import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.PinnedTarget
 import io.github.mangi.flymefreeform.config.PinnedTargetCodec
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
@@ -42,6 +43,27 @@ internal class ColorOsSidebarEntryEndpoint(
     private val invalidation = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) { current?.let(::finish) }
     }
+    private val settingsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ModulePreferences.ACTION_PINNED_TARGETS_CHANGED ||
+                sentFromUid != moduleUid()
+            ) return
+            val encoded = intent.getStringExtra(ModulePreferences.EXTRA_PINNED_TARGETS) ?: return
+            configuration.override(
+                configuration.snapshot.copy(
+                    enabled = intent.getBooleanExtra(
+                        ModulePreferences.EXTRA_MODULE_ENABLED,
+                        configuration.snapshot.enabled,
+                    ),
+                    pinsSaved = intent.getBooleanExtra(
+                        ModulePreferences.EXTRA_PINS_SAVED,
+                        configuration.snapshot.pinsSaved,
+                    ),
+                    pinnedTargets = PinnedTargetCodec.decodeList(encoded),
+                ),
+            )
+        }
+    }
 
     val binder: IBinder get() = messenger.binder
 
@@ -50,6 +72,11 @@ internal class ColorOsSidebarEntryEndpoint(
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(SidebarProtocol.ACTION_USER_SWITCHED)
         }, Context.RECEIVER_NOT_EXPORTED)
+        service.registerReceiver(
+            settingsReceiver,
+            IntentFilter(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED),
+            Context.RECEIVER_EXPORTED,
+        )
     }
 
     fun onUnbound(id: String?) { current?.takeIf { it.id == id }?.let(::finish) }
@@ -59,6 +86,8 @@ internal class ColorOsSidebarEntryEndpoint(
         disposed = true
         current?.let(::finish)
         try { service.unregisterReceiver(invalidation) }
+        catch (exception: RuntimeException) { report(exception) }
+        try { service.unregisterReceiver(settingsReceiver) }
         catch (exception: RuntimeException) { report(exception) }
         finally {
             worker.shutdownNow()
@@ -193,6 +222,15 @@ internal class ColorOsSidebarEntryEndpoint(
             lastFailure = now
             log(Log.WARN, "SIDEBAR_ENTRIES_FAILED", exception)
         }
+    }
+
+    private fun moduleUid(): Int = try {
+        service.packageManager.getApplicationInfo(
+            SidebarEntryProtocol.MODULE_PACKAGE,
+            android.content.pm.PackageManager.ApplicationInfoFlags.of(0),
+        ).uid
+    } catch (_: RuntimeException) {
+        -1
     }
 
     private inner class Request(val id: String, val deadline: Long, val reply: Messenger, val target: PinnedTarget.Sidebar?) {

@@ -3,6 +3,11 @@ package io.github.mangi.flymefreeform.config
 /** App 与 Hook 进程共享的框架配置协议；已发布的名称和类型不可随意复用。 */
 internal object ModulePreferences {
     const val GROUP = "module_runtime"
+    const val ACTION_PINNED_TARGETS_CHANGED =
+        "io.github.mangi.flymefreeform.action.PINNED_TARGETS_CHANGED"
+    const val EXTRA_PINNED_TARGETS = "pinned_targets"
+    const val EXTRA_PINS_SAVED = "pins_saved"
+    const val EXTRA_MODULE_ENABLED = "module_enabled"
     const val KEY_MODULE_ENABLED = "enabled"
     const val KEY_LEFT_CORNER_ENABLED = "corner_left_enabled"
     const val KEY_RIGHT_CORNER_ENABLED = "corner_right_enabled"

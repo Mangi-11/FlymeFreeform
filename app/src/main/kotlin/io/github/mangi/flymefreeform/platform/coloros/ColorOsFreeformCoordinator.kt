@@ -14,8 +14,10 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.config.PinnedTarget
+import io.github.mangi.flymefreeform.config.PinnedTargetCodec
 import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
@@ -77,6 +79,29 @@ internal class ColorOsFreeformCoordinator(
                 }
             }
         }
+    private val pinnedTargetsReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != ModulePreferences.ACTION_PINNED_TARGETS_CHANGED ||
+                    sentFromUid != moduleUid()
+                ) return
+                val encoded = intent.getStringExtra(ModulePreferences.EXTRA_PINNED_TARGETS) ?: return
+                val targets = PinnedTargetCodec.decodeList(encoded)
+                configuration.override(
+                    configuration.snapshot.copy(
+                        enabled = intent.getBooleanExtra(
+                            ModulePreferences.EXTRA_MODULE_ENABLED,
+                            configuration.snapshot.enabled,
+                        ),
+                        pinsSaved = intent.getBooleanExtra(
+                            ModulePreferences.EXTRA_PINS_SAVED,
+                            configuration.snapshot.pinsSaved,
+                        ),
+                        pinnedTargets = targets,
+                    ),
+                )
+            }
+        }
 
     @Volatile
     private var catalogSnapshot = AppCatalogSnapshot()
@@ -101,6 +126,7 @@ internal class ColorOsFreeformCoordinator(
             environmentState.start(context)
             environmentState.observe { applySettings(configuration.snapshot) }
             registerPackageObserver()
+            registerPinnedTargetsObserver()
             configuration.observe {
                 handler.post { applySettings(configuration.snapshot) }
             }
@@ -123,6 +149,27 @@ internal class ColorOsFreeformCoordinator(
         } catch (exception: RuntimeException) {
             logger(Log.WARN, "PACKAGE_OBSERVER_UNAVAILABLE", exception)
         }
+    }
+
+    private fun registerPinnedTargetsObserver() {
+        try {
+            context.registerReceiver(
+                pinnedTargetsReceiver,
+                IntentFilter(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED),
+                Context.RECEIVER_EXPORTED,
+            )
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "PINNED_TARGETS_OBSERVER_UNAVAILABLE", exception)
+        }
+    }
+
+    private fun moduleUid(): Int = try {
+        context.packageManager.getApplicationInfo(
+            SidebarEntryProtocol.MODULE_PACKAGE,
+            android.content.pm.PackageManager.ApplicationInfoFlags.of(0),
+        ).uid
+    } catch (_: RuntimeException) {
+        -1
     }
 
     private fun applySettings(settings: ModuleSettingsSnapshot) {

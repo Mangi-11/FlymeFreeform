@@ -38,6 +38,14 @@ internal class ProcessConfiguration(
         listeners -= listener
     }
 
+    /** 接收经调用方 UID 校验的运行时推送，避免等待目标进程重新加载。 */
+    fun override(next: ModuleSettingsSnapshot) {
+        isAvailable = true
+        if (next == snapshot) return
+        snapshot = next
+        listeners.forEach { listener -> listener(next) }
+    }
+
     private fun refresh(preferences: SharedPreferences, initial: Boolean) {
         val next =
             try {
