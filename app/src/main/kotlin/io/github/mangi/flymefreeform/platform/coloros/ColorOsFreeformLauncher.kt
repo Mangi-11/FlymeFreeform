@@ -7,32 +7,71 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Process
+import android.os.UserHandle
+import io.github.mangi.flymefreeform.apps.AppTarget
+import io.github.mangi.flymefreeform.apps.createContextForUser
+import io.github.mangi.flymefreeform.apps.identifier
 
 /** 每次提交都重新校验组件，并仅携带 ColorOS 自由窗参数启动，不退化为普通全屏启动。 */
 internal class ColorOsFreeformLauncher(
     private val context: Context,
 ) {
-    fun launch(component: ComponentName): FreeformLaunchResult {
-        if (!isLaunchable(component)) return FreeformLaunchResult.TargetUnavailable
-
-        val intent =
-            Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LAUNCHER)
-                .setComponent(component)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val options = createLaunchOptions()
-
-        return try {
-            context.startActivity(intent, options)
-            FreeformLaunchResult.Started
+    fun launch(target: AppTarget): FreeformLaunchResult =
+        try {
+            val launchContext = contextFor(target)
+            if (!isLaunchable(launchContext, target.component)) {
+                return FreeformLaunchResult.TargetUnavailable
+            }
+            val intent =
+                Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setComponent(target.component)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val options = createLaunchOptions()
+            FreeformLaunchResult.Started(startForUser(intent, options, target, launchContext))
         } catch (exception: SecurityException) {
             FreeformLaunchResult.Failed("FREEFORM_LAUNCH_SECURITY_REJECTED", exception)
+        } catch (exception: ReflectiveOperationException) {
+            FreeformLaunchResult.Failed("FREEFORM_LAUNCH_USER_CONTEXT_FAILED", exception)
         } catch (exception: RuntimeException) {
             FreeformLaunchResult.Failed("FREEFORM_LAUNCH_START_FAILED", exception)
         }
+
+    /**
+     * 分身（MultiApp 用户）不能靠调用方所在用户启动，必须显式带上目标用户。
+     * 返回实际走通的路径，供日志确认真正生效的是哪一条。
+     */
+    private fun startForUser(
+        intent: Intent,
+        options: Bundle,
+        target: AppTarget,
+        launchContext: Context,
+    ): String {
+        if (target.userId == Process.myUserHandle().identifier) {
+            launchContext.startActivity(intent, options)
+            return LAUNCH_ROUTE_MAIN
+        }
+        val startActivityAsUser =
+            Context::class.java.methods.firstOrNull { method ->
+                method.name == START_ACTIVITY_AS_USER &&
+                    method.parameterTypes.contentEquals(
+                        arrayOf(Intent::class.java, Bundle::class.java, UserHandle::class.java),
+                    )
+            }
+        if (startActivityAsUser != null) {
+            startActivityAsUser.invoke(context, intent, options, target.user)
+            return LAUNCH_ROUTE_AS_USER
+        }
+        // 兜底：按用户创建的 Context 自身也以该用户身份发起启动。
+        launchContext.startActivity(intent, options)
+        return LAUNCH_ROUTE_USER_CONTEXT
     }
 
-    private fun isLaunchable(component: ComponentName): Boolean =
+    private fun contextFor(target: AppTarget): Context =
+        context.createContextForUser(target.userId)
+
+    private fun isLaunchable(context: Context, component: ComponentName): Boolean =
         try {
             context.packageManager
                 .getActivityInfo(component, PackageManager.ComponentInfoFlags.of(0))
@@ -72,11 +111,17 @@ internal class ColorOsFreeformLauncher(
         const val ZOOM_LAUNCH_FLAG = 4
         const val WINDOWING_MODE_KEY = "android.activity.windowingMode"
         const val ZOOM_FLAGS_KEY = "android:activity.mZoomLaunchFlags"
+        const val START_ACTIVITY_AS_USER = "startActivityAsUser"
+        const val LAUNCH_ROUTE_MAIN = "main"
+        const val LAUNCH_ROUTE_AS_USER = "startActivityAsUser"
+        const val LAUNCH_ROUTE_USER_CONTEXT = "userContext"
     }
 }
 
 internal sealed interface FreeformLaunchResult {
-    data object Started : FreeformLaunchResult
+    data class Started(
+        val route: String,
+    ) : FreeformLaunchResult
 
     data object TargetUnavailable : FreeformLaunchResult
 

@@ -118,7 +118,7 @@ internal class ColorOsFreeformCoordinator(
     private fun applySettings(settings: ModuleSettingsSnapshot) {
         val selectionChanged =
             settings.pinsSaved != lastSettings.pinsSaved ||
-                settings.pinnedComponents != lastSettings.pinnedComponents
+                settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
         if (environmentState.isGestureAllowed(refreshKeyguard = true) && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
             val resuming = !pointerRegistered
@@ -388,8 +388,18 @@ internal class ColorOsFreeformCoordinator(
 
     private fun launchCommittedApp(entry: RadialAppEntry) {
         if (!isGestureEnvironmentAllowed()) return
-        when (val result = launcher.launch(entry.component)) {
-            FreeformLaunchResult.Started -> Unit
+        logger(
+            Log.INFO,
+            "FREEFORM_LAUNCH_REQUEST user=${entry.target.userId} target=${entry.target.component.flattenToShortString()}",
+            null,
+        )
+        when (val result = launcher.launch(entry.target)) {
+            is FreeformLaunchResult.Started ->
+                logger(
+                    Log.INFO,
+                    "FREEFORM_LAUNCH_STARTED user=${entry.target.userId} route=${result.route}",
+                    null,
+                )
             FreeformLaunchResult.TargetUnavailable ->
                 logger(Log.WARN, "FREEFORM_LAUNCH_TARGET_UNAVAILABLE", null)
             is FreeformLaunchResult.Failed ->

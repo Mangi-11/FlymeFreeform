@@ -71,6 +71,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import io.github.mangi.flymefreeform.apps.AppTarget
 import io.github.mangi.flymefreeform.gesture.CornerSide
 import io.github.mangi.flymefreeform.gesture.RadialGeometry
 import io.github.mangi.flymefreeform.gesture.RadialLayout
@@ -120,7 +121,7 @@ internal class CornerRadialOverlayView(
     private var catalog = AppCatalogSnapshot()
     private val radialClipPath = Path()
     private val radialImages = mutableStateOf<List<ImageBitmap>>(emptyList())
-    private var panelImages: Map<android.content.ComponentName, ImageBitmap> = emptyMap()
+    private var panelImages: Map<AppTarget, ImageBitmap> = emptyMap()
     private var side = CornerSide.Right
     private var latestX = 0f
     private var latestY = 0f
@@ -151,7 +152,7 @@ internal class CornerRadialOverlayView(
     fun updateRadialAppearance(next: AppCatalogSnapshot) {
         if (disposed || dismissing || panelModeState.value) return
         // 只替换同一批应用的图像，不在滑选途中交换目标或重置入场动画。
-        if (catalog.radialApps.map { it.component } != next.radialApps.map { it.component }) return
+        if (catalog.radialApps.map { it.target } != next.radialApps.map { it.target }) return
         radialImages.value = next.radialApps.map { it.icon.asImageBitmap() }
     }
 
@@ -167,7 +168,7 @@ internal class CornerRadialOverlayView(
         latestX = x
         latestY = y
         radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
-        panelImages = catalog.panelApps.associate { entry -> entry.component to entry.icon.asImageBitmap() }
+        panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
         handoffEntryProgress.floatValue = 0f
@@ -496,7 +497,14 @@ internal class CornerRadialOverlayView(
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
                 if (index < catalog.radialApps.size) {
                     radialImages.value.getOrNull(index)?.let { image ->
-                        drawSystemImage(image, centerX, centerY, diameter, contentAlpha)
+                        drawSystemImage(
+                            image = image,
+                            centerX = centerX,
+                            centerY = centerY,
+                            size = diameter,
+                            alpha = contentAlpha,
+                            cloneBadge = catalog.radialApps[index].target.userId != 0,
+                        )
                     }
                 } else {
                     drawMoreItem(centerX, centerY, diameter, contentAlpha)
@@ -544,6 +552,7 @@ internal class CornerRadialOverlayView(
         centerY: Float,
         size: Float,
         alpha: Float,
+        cloneBadge: Boolean,
     ) {
         if (image.width <= 0 || image.height <= 0 || size <= 0f) return
         val aspectRatio = image.width.toFloat() / image.height
@@ -563,6 +572,26 @@ internal class CornerRadialOverlayView(
                 dstSize = destinationSize,
                 alpha = alpha,
                 filterQuality = FilterQuality.High,
+            )
+        }
+        if (cloneBadge) {
+            val badgeRadius = (size * CLONE_BADGE_RADIUS_FRACTION).coerceAtLeast(1f)
+            val badgeCenter =
+                Offset(
+                    centerX + size * CLONE_BADGE_OFFSET_FRACTION,
+                    centerY + size * CLONE_BADGE_OFFSET_FRACTION,
+                )
+            drawCircle(
+                color = Color.White,
+                radius = badgeRadius * CLONE_BADGE_BORDER_SCALE,
+                center = badgeCenter,
+                alpha = alpha,
+            )
+            drawCircle(
+                color = CLONE_BADGE_COLOR,
+                radius = badgeRadius,
+                center = badgeCenter,
+                alpha = alpha,
             )
         }
     }
@@ -642,7 +671,7 @@ internal class CornerRadialOverlayView(
             ) {
                 items(
                     items = catalog.panelApps,
-                    key = { entry -> entry.component.flattenToShortString() },
+                    key = { entry -> entry.target.storageKey },
                 ) { entry ->
                     Column(
                         modifier =
@@ -654,7 +683,7 @@ internal class CornerRadialOverlayView(
                                 },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        panelImages[entry.component]?.let { image ->
+                        panelImages[entry.target]?.let { image ->
                             Image(
                                 bitmap = image,
                                 contentDescription = null,
@@ -978,6 +1007,10 @@ internal class CornerRadialOverlayView(
     private data class ExitRequest(val pendingCommit: RadialAppEntry?, val entryProgress: Float)
 
     private companion object {
+        const val CLONE_BADGE_OFFSET_FRACTION = 0.32f
+        const val CLONE_BADGE_RADIUS_FRACTION = 0.14f
+        const val CLONE_BADGE_BORDER_SCALE = 1.45f
+        val CLONE_BADGE_COLOR = Color(0xFFE85D3F)
         val EMPTY_LAYOUT =
             RadialLayout(
                 side = CornerSide.Right,

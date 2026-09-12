@@ -24,4 +24,11 @@ class PinnedComponentCodecTest {
     fun anExistingEmptyValueRemainsAnExplicitEmptyList() {
         assertEquals(emptyList<String>(), PinnedComponentCodec.decodeRaw(""))
     }
+
+    @Test
+    fun distinguishesPrimaryAndCloneTargetsByUserSuffix() {
+        assertEquals("a/.A", PinnedComponentCodec.componentPart("a/.A#999"))
+        assertEquals(999, PinnedComponentCodec.parseUserSuffix("a/.A#999"))
+        assertEquals(null, PinnedComponentCodec.parseUserSuffix("a/.A"))
+    }
 }

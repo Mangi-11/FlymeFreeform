@@ -329,8 +329,8 @@ private fun SettingsCard(
     val appsSummary =
         when {
             !state.settings.pinsSaved -> stringResource(R.string.radial_apps_recent_summary)
-            state.settings.pinnedComponents.isEmpty() -> stringResource(R.string.radial_apps_empty_summary)
-            else -> stringResource(R.string.radial_apps_count_summary, state.settings.pinnedComponents.size)
+            state.settings.pinnedTargets.isEmpty() -> stringResource(R.string.radial_apps_empty_summary)
+            else -> stringResource(R.string.radial_apps_count_summary, state.settings.pinnedTargets.size)
         }
     Card(modifier = Modifier.fillMaxWidth()) {
         SwitchPreference(
