@@ -5,10 +5,11 @@ import org.junit.Test
 
 class AppSelectionPolicyTest {
     @Test
-    fun firstUseFallsBackToRecentThenAll() {
+    fun firstUseShowsRecentAppsOnly() {
+        val recent = (1..7).map { "recent-$it" }
         assertEquals(
-            listOf("recent", "other"),
-            AppSelectionPolicy.radialItems(false, emptyList(), listOf("recent"), listOf("recent", "other"), { it }, 6),
+            recent.take(6),
+            AppSelectionPolicy.radialItems(false, emptyList(), recent, listOf("other"), { it }, 6),
         )
     }
 
