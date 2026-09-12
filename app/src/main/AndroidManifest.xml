@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <permission
+        android:name="io.github.mangi.flymefreeform.permission.REQUEST_ENTRY_CATALOG"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="io.github.mangi.flymefreeform.permission.REQUEST_ENTRY_CATALOG" />
+
     <queries>
         <package android:name="com.coloros.smartsidebar" />
         <intent>

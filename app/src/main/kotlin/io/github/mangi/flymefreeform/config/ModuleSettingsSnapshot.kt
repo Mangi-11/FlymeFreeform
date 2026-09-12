@@ -1,6 +1,5 @@
 package io.github.mangi.flymefreeform.config
 
-import android.content.ComponentName
 import android.content.SharedPreferences
 
 internal data class ModuleSettingsSnapshot(
@@ -9,7 +8,7 @@ internal data class ModuleSettingsSnapshot(
     val rightCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
     val cornerTriggerRangeDp: Int = ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
     val pinsSaved: Boolean = false,
-    val pinnedComponents: List<ComponentName> = emptyList(),
+    val pinnedTargets: List<PinnedTarget> = emptyList(),
     val outsideTapCloseMode: OutsideTapCloseMode =
         ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
     val handleSwipeUpToMiniEnabled: Boolean =
@@ -41,12 +40,13 @@ internal data class ModuleSettingsSnapshot(
             )
         if (pinsSaved) {
             editor.putString(
-                ModulePreferences.KEY_CORNER_PINS,
-                encodePinnedComponents(pinnedComponents),
+                ModulePreferences.KEY_PINNED_TARGETS,
+                PinnedTargetCodec.encodeList(pinnedTargets),
             )
         } else {
-            editor.remove(ModulePreferences.KEY_CORNER_PINS)
+            editor.remove(ModulePreferences.KEY_PINNED_TARGETS)
         }
+        editor.remove(ModulePreferences.KEY_CORNER_PINS)
         return editor
     }
 
@@ -86,22 +86,20 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
                     ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
                 )
-            val pinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_PINS)
-            val pins =
-                if (pinsSaved) {
-                    decodePinnedComponents(
-                        preferences.getString(ModulePreferences.KEY_CORNER_PINS, "") ?: "",
-                    )
-                } else {
-                    emptyList()
-                }
+            val hasTargets = preferences.contains(ModulePreferences.KEY_PINNED_TARGETS)
+            val pinsSaved = hasTargets || preferences.contains(ModulePreferences.KEY_CORNER_PINS)
+            val pins = if (hasTargets) {
+                PinnedTargetCodec.decodeList(preferences.getString(ModulePreferences.KEY_PINNED_TARGETS, "").orEmpty())
+            } else {
+                PinnedTargetCodec.decodeLegacy(preferences.getString(ModulePreferences.KEY_CORNER_PINS, "").orEmpty())
+            }
             return ModuleSettingsSnapshot(
                 enabled = enabled,
                 leftCornerEnabled = leftEnabled,
                 rightCornerEnabled = rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 pinsSaved = pinsSaved,
-                pinnedComponents = pins,
+                pinnedTargets = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
                 pauseInLandscape = preferences.getBoolean(
@@ -114,19 +112,5 @@ internal data class ModuleSettingsSnapshot(
                 ),
             )
         }
-
-        fun encodePinnedComponents(components: List<ComponentName>): String =
-            components
-                .asSequence()
-                .distinct()
-                .take(ModulePreferences.MAX_PINNED_APPS)
-                .joinToString("\n", transform = ComponentName::flattenToString)
-
-        fun decodePinnedComponents(value: String): List<ComponentName> =
-            PinnedComponentCodec
-                .decodeRaw(value)
-                .asSequence()
-                .mapNotNull(ComponentName::unflattenFromString)
-                .toList()
     }
 }

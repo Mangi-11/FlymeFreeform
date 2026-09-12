@@ -1,6 +1,5 @@
 package io.github.mangi.flymefreeform.ui
 
-import android.content.ComponentName
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -9,8 +8,9 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
-import io.github.mangi.flymefreeform.apps.InstalledLauncherApp
+import io.github.mangi.flymefreeform.apps.SelectableEntry
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
+import io.github.mangi.flymefreeform.config.PinnedTarget
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
 import kotlinx.serialization.Serializable
 
@@ -26,7 +26,10 @@ internal sealed interface AppRoute : NavKey {
 @Composable
 internal fun FlymeFreeformNavHost(
     state: FrameworkConnectionState,
-    apps: List<InstalledLauncherApp>,
+    apps: List<SelectableEntry>,
+    sidebarCatalog: io.github.mangi.flymefreeform.apps.SidebarCatalogState,
+    onRefreshCatalog: () -> Unit,
+    onCancelCatalog: () -> Unit,
     onModuleEnabledChange: (Boolean) -> Unit,
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
@@ -36,7 +39,7 @@ internal fun FlymeFreeformNavHost(
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
-    onPinnedComponentsChange: (List<ComponentName>) -> Unit,
+    onPinnedTargetsChange: (List<PinnedTarget>) -> Unit,
 ) {
     val backStack = rememberNavBackStack(AppRoute.Settings)
     val popBackStack = remember(backStack) {
@@ -81,8 +84,11 @@ internal fun FlymeFreeformNavHost(
                     PinnedAppsScreen(
                         state = state,
                         apps = apps,
+                        sidebarCatalog = sidebarCatalog,
+                        onRefreshCatalog = onRefreshCatalog,
+                        onCancelCatalog = onCancelCatalog,
                         onBack = popBackStack,
-                        onPinnedComponentsChange = onPinnedComponentsChange,
+                        onPinnedTargetsChange = onPinnedTargetsChange,
                     )
                 }
             },

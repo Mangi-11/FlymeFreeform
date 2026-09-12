@@ -9,10 +9,13 @@ import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.mangi.flymefreeform.platform.coloros.ColorOsAllAppsContent
 import io.github.mangi.flymefreeform.platform.coloros.ColorOsAllAppsEndpoint
+import io.github.mangi.flymefreeform.platform.coloros.ColorOsSidebarEntryEndpoint
 import io.github.mangi.flymefreeform.platform.coloros.ColorOsSidebarTarget
+import io.github.mangi.flymefreeform.platform.coloros.SidebarEntryProtocol
 
 /** 只注入侧边栏 UI 进程；服务方法照常执行一次，应用/工具的启动仍交给原厂路由。 */
 internal class SidebarHookInstaller(private val module: XposedModule, private val configuration: ProcessConfiguration) {
+    private var entryEndpoint: ColorOsSidebarEntryEndpoint? = null
     private var endpoint: ColorOsAllAppsEndpoint? = null
 
     fun install(loader: ClassLoader) {
@@ -40,6 +43,11 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                             endpoint = ColorOsAllAppsEndpoint(service, loader, configuration, ::log)
                         }
                         endpoint?.takeIf { it.service === service }?.binder ?: original
+                    } else if (service != null && intent?.action == SidebarEntryProtocol.BIND_ACTION) {
+                        if (entryEndpoint == null && ColorOsSidebarTarget.supportedUid(service) == Process.myUid()) {
+                            entryEndpoint = ColorOsSidebarEntryEndpoint(service, loader, configuration, ::log)
+                        }
+                        entryEndpoint?.takeIf { it.service === service }?.binder ?: original
                     } else original
                 }
             handles += module.hook(unbind).setId("flymefreeform.allapps.unbind")
@@ -47,10 +55,16 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                     val original = chain.proceed()
                     val intent = chain.getArg(0) as? Intent
                     if (intent?.action == ColorOsSidebarTarget.BIND_ACTION) endpoint?.onUnbound(intent.identifier)
+                    if (intent?.action == SidebarEntryProtocol.BIND_ACTION) entryEndpoint?.onUnbound(intent.identifier)
                     original
                 }
             handles += module.hook(destroy).setId("flymefreeform.allapps.destroy")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
+                    if (entryEndpoint?.service === chain.thisObject) {
+                        val previous = entryEndpoint
+                        entryEndpoint = null
+                        previous?.dispose()
+                    }
                     if (endpoint?.service === chain.thisObject) {
                         val previous = endpoint
                         endpoint = null

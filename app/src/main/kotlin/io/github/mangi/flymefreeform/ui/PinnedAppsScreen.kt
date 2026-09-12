@@ -1,6 +1,5 @@
 package io.github.mangi.flymefreeform.ui
 
-import android.content.ComponentName
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -52,9 +51,14 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.mangi.flymefreeform.R
-import io.github.mangi.flymefreeform.apps.InstalledLauncherApp
+import io.github.mangi.flymefreeform.apps.SelectableEntry
+import io.github.mangi.flymefreeform.apps.SidebarCatalogState
+import io.github.mangi.flymefreeform.apps.SidebarCatalogStatus
 import io.github.mangi.flymefreeform.config.ModulePreferences
+import io.github.mangi.flymefreeform.config.PinnedTarget
+import io.github.mangi.flymefreeform.config.PinnedTargetCodec
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
 import io.github.mangi.flymefreeform.ui.component.TopBarBackdrop
 import io.github.mangi.flymefreeform.ui.component.captureForTopBar
@@ -81,15 +85,28 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 internal fun PinnedAppsScreen(
     state: FrameworkConnectionState,
-    apps: List<InstalledLauncherApp>,
+    apps: List<SelectableEntry>,
+    sidebarCatalog: SidebarCatalogState,
+    onRefreshCatalog: () -> Unit,
+    onCancelCatalog: () -> Unit,
     onBack: () -> Unit,
-    onPinnedComponentsChange: (List<ComponentName>) -> Unit,
+    onPinnedTargetsChange: (List<PinnedTarget>) -> Unit,
 ) {
+    val refreshCatalog by rememberUpdatedState(onRefreshCatalog)
+    val cancelCatalog by rememberUpdatedState(onCancelCatalog)
+    LifecycleResumeEffect(state.canChangeSettings) {
+        if (state.canChangeSettings) refreshCatalog()
+        onPauseOrDispose { cancelCatalog() }
+    }
+    val allEntries = remember(apps, sidebarCatalog.entries) { apps + sidebarCatalog.entries }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerQuery by remember { mutableStateOf("") }
     // 拖动或增删后的本地顺序；远端配置回读同步前以它为准，避免列表闪回旧顺序
-    var localOrder by remember { mutableStateOf<List<ComponentName>?>(null) }
-    var draggingComponent by remember { mutableStateOf<ComponentName?>(null) }
+    var localOrder by remember { mutableStateOf<List<PinnedTarget>?>(null) }
+    LaunchedEffect(state.canChangeSettings, state.issue) {
+        if (!state.canChangeSettings || state.issue != null) localOrder = null
+    }
+    var draggingComponent by remember { mutableStateOf<PinnedTarget?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var rowHeightPx by remember { mutableFloatStateOf(0f) }
     val scrollBehavior = MiuixScrollBehavior()
@@ -131,12 +148,12 @@ internal fun PinnedAppsScreen(
             val safeEnd = innerPadding.calculateEndPadding(direction)
             val safeWidth = (maxWidth - safeStart - safeEnd).coerceAtLeast(0.dp)
             val side = maxOf(ScreenHorizontalMargin, (safeWidth - ScreenContentMaxWidth) / 2)
-            val pinned = state.settings.pinnedComponents
+            val pinned = state.settings.pinnedTargets
             LaunchedEffect(pinned) {
                 if (localOrder != null && pinned == localOrder) localOrder = null
             }
             val displayed = localOrder ?: pinned
-            val appByComponent = remember(apps) { apps.associateBy(InstalledLauncherApp::component) }
+            val appByComponent = remember(allEntries) { allEntries.associateBy(SelectableEntry::target) }
             Box(modifier = Modifier.fillMaxSize().captureForTopBar(backdrop)) {
                 LazyColumn(
                 modifier =
@@ -166,7 +183,7 @@ internal fun PinnedAppsScreen(
                 item(key = "added") {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         displayed.forEachIndexed { index, component ->
-                            key(component.flattenToString()) {
+                            key(PinnedTargetCodec.encode(component)) {
                                 AddedAppRow(
                                     component = component,
                                     app = appByComponent[component],
@@ -182,7 +199,7 @@ internal fun PinnedAppsScreen(
                                     onRemove = {
                                         val updated = displayed.filterNot { it == component }
                                         localOrder = updated
-                                        onPinnedComponentsChange(updated)
+                                        onPinnedTargetsChange(updated)
                                     },
                                     onDragStart = {
                                         localOrder = displayed
@@ -222,7 +239,7 @@ internal fun PinnedAppsScreen(
                                             if (order == pinned) {
                                                 localOrder = null
                                             } else {
-                                                onPinnedComponentsChange(order)
+                                                onPinnedTargetsChange(order)
                                             }
                                         }
                                     },
@@ -272,16 +289,23 @@ internal fun PinnedAppsScreen(
             // 勾选状态跟随 displayed，sheet 内增删即时可见
             val addedSet = remember(displayed) { displayed.toSet() }
             val candidates =
-                remember(apps, pickerQuery) {
+                remember(allEntries, pickerQuery) {
                     if (pickerQuery.isBlank()) {
-                        apps
+                        allEntries
                     } else {
-                        apps.filter {
+                        allEntries.filter {
                             it.label.contains(pickerQuery, ignoreCase = true) ||
-                                it.component.packageName.contains(pickerQuery, ignoreCase = true)
+                                it.packageName.contains(pickerQuery, ignoreCase = true)
                         }
                     }
                 }
+            val groups = remember(candidates) {
+                listOf(
+                    R.string.entry_group_tools to candidates.filter { (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.Tool },
+                    R.string.entry_group_shortcuts to candidates.filter { it.target is PinnedTarget.Sidebar && it.target.kind != PinnedTarget.Kind.Tool },
+                    R.string.entry_group_apps to candidates.filter { it.target is PinnedTarget.App },
+                ).filter { it.second.isNotEmpty() }
+            }
             OverlayBottomSheet(
                 show = pickerOpen,
                 title = stringResource(R.string.select_apps_action),
@@ -304,8 +328,20 @@ internal fun PinnedAppsScreen(
                         },
                     )
                     LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                        if (sidebarCatalog.status != SidebarCatalogStatus.Ready) {
+                            item(key = "sidebar_status") {
+                                BasicComponent(
+                                    title = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading else R.string.sidebar_catalog_unavailable),
+                                    summary = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading_summary else R.string.sidebar_catalog_retry_summary),
+                                    onClick = onRefreshCatalog,
+                                    onClickLabel = stringResource(R.string.retry_action),
+                                    role = Role.Button,
+                                    enabled = state.canChangeSettings && sidebarCatalog.status != SidebarCatalogStatus.Loading,
+                                )
+                            }
+                        }
                         when {
-                            apps.isEmpty() ->
+                            allEntries.isEmpty() ->
                                 item(key = "apps_loading") {
                                     BasicComponent(
                                         title = stringResource(R.string.available_apps_loading),
@@ -320,12 +356,20 @@ internal fun PinnedAppsScreen(
                                         enabled = false,
                                     )
                                 }
-                            else ->
-                                items(candidates, key = { it.component.flattenToString() }) { app ->
-                                    val added = app.component in addedSet
+                            else -> groups.forEach { (title, entries) ->
+                                item(key = "group_$title") {
+                                    Text(
+                                        text = stringResource(title),
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() },
+                                        style = MiuixTheme.textStyles.subtitle,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                }
+                                items(entries, key = { PinnedTargetCodec.encode(it.target) }) { app ->
+                                    val added = app.target in addedSet
                                     BasicComponent(
                                         title = app.label,
-                                        summary = app.component.packageName,
+                                        summary = app.packageName,
                                         startAction = { AppIcon(app) },
                                         endActions =
                                             if (added) {
@@ -343,13 +387,13 @@ internal fun PinnedAppsScreen(
                                         onClick = {
                                             val updated =
                                                 if (added) {
-                                                    displayed.filterNot { it == app.component }
+                                                    displayed.filterNot { it == app.target }
                                                 } else {
-                                                    (displayed + app.component)
+                                                    (displayed + app.target)
                                                         .take(ModulePreferences.MAX_PINNED_APPS)
                                                 }
                                             localOrder = updated
-                                            onPinnedComponentsChange(updated)
+                                            onPinnedTargetsChange(updated)
                                         },
                                         onClickLabel =
                                             stringResource(
@@ -363,9 +407,11 @@ internal fun PinnedAppsScreen(
                                         role = Role.Button,
                                         enabled =
                                             state.canChangeSettings &&
-                                                (added || displayed.size < ModulePreferences.MAX_PINNED_APPS),
+                                                (added || displayed.size < ModulePreferences.MAX_PINNED_APPS) &&
+                                                (added || app.target is PinnedTarget.App || sidebarCatalog.status == SidebarCatalogStatus.Ready),
                                     )
                                 }
+                            }
                         }
                     }
                 }
@@ -376,8 +422,8 @@ internal fun PinnedAppsScreen(
 
 @Composable
 private fun AddedAppRow(
-    component: ComponentName,
-    app: InstalledLauncherApp?,
+    component: PinnedTarget,
+    app: SelectableEntry?,
     index: Int,
     enabled: Boolean,
     draggable: Boolean,
@@ -429,7 +475,7 @@ private fun AddedAppRow(
                 .graphicsLayer { translationY = if (dragging) dragOffsetY else offsetAnim.value }
                 .zIndex(if (dragging) 1f else 0f)
                 .then(dragModifier),
-        title = app?.label ?: component.packageName,
+        title = app?.label ?: component.displayIdentity(),
         summary = if (app == null) stringResource(R.string.pinned_app_missing) else null,
         startAction = {
             if (app != null) {
@@ -464,7 +510,7 @@ private fun AddedAppRow(
                     contentDescription =
                         stringResource(
                             R.string.remove_named_app_action,
-                            app?.label ?: component.packageName,
+                            app?.label ?: component.displayIdentity(),
                         ),
                     modifier = Modifier.size(16.dp),
                     tint = MiuixTheme.colorScheme.onError,
@@ -476,7 +522,7 @@ private fun AddedAppRow(
 }
 
 @Composable
-private fun AppIcon(app: InstalledLauncherApp) {
+private fun AppIcon(app: SelectableEntry) {
     Image(
         bitmap = app.icon.asImageBitmap(),
         contentDescription = null,
@@ -493,4 +539,9 @@ private fun BackButton(onBack: () -> Unit) {
             modifier = Modifier.size(24.dp),
         )
     }
+}
+
+private fun PinnedTarget.displayIdentity(): String = when (this) {
+    is PinnedTarget.App -> packageName
+    is PinnedTarget.Sidebar -> alias
 }

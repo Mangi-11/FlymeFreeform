@@ -8,6 +8,44 @@ import org.junit.Test
 
 class ModuleSettingsSnapshotTest {
     @Test
+    fun legacyPinsMigrateOnWriteAndKeepOrder() {
+        val preferences = InMemoryPreferences(ModulePreferences.KEY_CORNER_PINS to "com.first/.A\ncom.second/.B")
+        val migrated = ModuleSettingsSnapshot.readFrom(preferences)
+        assertTrue(migrated.pinsSaved)
+        assertEquals(listOf(PinnedTarget.App("com.first", "com.first.A"), PinnedTarget.App("com.second", "com.second.B")), migrated.pinnedTargets)
+        migrated.writeTo(preferences.edit()).commit()
+        assertFalse(preferences.contains(ModulePreferences.KEY_CORNER_PINS))
+        assertTrue(preferences.contains(ModulePreferences.KEY_PINNED_TARGETS))
+        assertEquals(migrated, ModuleSettingsSnapshot.readFrom(preferences))
+    }
+
+    @Test
+    fun explicitEmptyNewPinsOverrideLegacyAndRemainEmptyAfterSaving() {
+        val preferences = InMemoryPreferences(
+            ModulePreferences.KEY_PINNED_TARGETS to "",
+            ModulePreferences.KEY_CORNER_PINS to "com.old/.Main",
+        )
+        val empty = ModuleSettingsSnapshot.readFrom(preferences)
+        assertTrue(empty.pinsSaved)
+        assertTrue(empty.pinnedTargets.isEmpty())
+        empty.writeTo(preferences.edit()).commit()
+        assertEquals(empty, ModuleSettingsSnapshot.readFrom(preferences))
+    }
+
+    @Test
+    fun mixedUnavailableTargetsArePreservedByUnrelatedSettingsWrites() {
+        val targets = listOf(
+            PinnedTarget.Sidebar(PinnedTarget.Kind.Tool, "capture", 0),
+            PinnedTarget.App("com.example", "com.example.Main"),
+            PinnedTarget.Sidebar(PinnedTarget.Kind.Shortcut, "com.example_note", 0),
+        )
+        val preferences = InMemoryPreferences()
+        ModuleSettingsSnapshot(pinsSaved = true, pinnedTargets = targets).writeTo(preferences.edit()).commit()
+        ModuleSettingsSnapshot.readFrom(preferences).copy(pauseInLandscape = false).writeTo(preferences.edit()).commit()
+        assertEquals(targets, ModuleSettingsSnapshot.readFrom(preferences).pinnedTargets)
+    }
+
+    @Test
     fun missingKeysUseProductDefaults() {
         val snapshot = ModuleSettingsSnapshot.readFrom(InMemoryPreferences())
 

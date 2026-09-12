@@ -15,6 +15,7 @@ import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
+import io.github.mangi.flymefreeform.config.PinnedTarget
 import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
@@ -62,10 +63,18 @@ internal class ColorOsFreeformCoordinator(
                 }
             }
         }
+    private val entryCatalog = ColorOsEntryCatalogBroker(context, handler, logger) { entries ->
+        appCatalog.updateSidebarEntries(entries, lastSettings)
+    }
+    private var entryLaunchGeneration = 0L
     private val packageReceiver =
         object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                if (lastSettings.enabled) appCatalog.refresh(lastSettings)
+                entryCatalog.invalidate()
+                if (lastSettings.enabled) {
+                    appCatalog.refresh(lastSettings)
+                    if (lastSettings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
+                }
             }
         }
 
@@ -88,6 +97,7 @@ internal class ColorOsFreeformCoordinator(
 
     fun start() {
         handler.post {
+            entryCatalog.start()
             environmentState.start(context)
             environmentState.observe { applySettings(configuration.snapshot) }
             registerPackageObserver()
@@ -118,16 +128,19 @@ internal class ColorOsFreeformCoordinator(
     private fun applySettings(settings: ModuleSettingsSnapshot) {
         val selectionChanged =
             settings.pinsSaved != lastSettings.pinsSaved ||
-                settings.pinnedComponents != lastSettings.pinnedComponents
+                settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
         if (environmentState.isGestureAllowed(refreshKeyguard = true) && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
             val resuming = !pointerRegistered
+            if ((resuming || selectionChanged) && settings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
             registerPointerListener()
             if (resuming || selectionChanged || !catalogSnapshot.matches(settings) || catalogSnapshot.radialApps.isEmpty()) {
                 appCatalog.refresh(settings, reloadApps = resuming || selectionChanged || catalogSnapshot.radialApps.isEmpty())
             }
         } else {
             sidebar.cancel()
+            entryLaunchGeneration++
+            entryCatalog.cancel()
             unregisterPointerListener()
             activeEnvironmentApproved = false
             activeGestureConfig = null
@@ -212,6 +225,10 @@ internal class ColorOsFreeformCoordinator(
         val event = queued.event
         try {
             if (queued.generation != pointerGeneration || !pointerRegistered) return
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                entryLaunchGeneration++
+                entryCatalog.cancelLaunch()
+            }
             handlePointerEvent(event)
         } catch (exception: RuntimeException) {
             gestureEngine.cancel()
@@ -329,6 +346,8 @@ internal class ColorOsFreeformCoordinator(
         x: Float,
         y: Float,
     ) {
+        entryLaunchGeneration++
+        entryCatalog.cancelLaunch()
         removeOverlay()
         morePanelActive = false
         val params = createOverlayParams(focusable = false)
@@ -376,19 +395,43 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
-    override fun onAppCommitted(entry: RadialAppEntry) {
+    override fun onEntryCommitted(entry: RadialEntry) {
+        entryLaunchGeneration++
+        entryCatalog.cancelLaunch()
         val generation = pointerGeneration
         activeEnvironmentApproved = false
         gestureEngine.cancel()
         removeOverlay()
         handler.post {
-            if (generation == pointerGeneration) launchCommittedApp(entry)
+            if (generation == pointerGeneration) launchCommittedEntry(entry)
         }
     }
 
-    private fun launchCommittedApp(entry: RadialAppEntry) {
+    private fun launchCommittedEntry(entry: RadialEntry) {
         if (!isGestureEnvironmentAllowed()) return
-        when (val result = launcher.launch(entry.component)) {
+        val target = entry.target
+        if (target is PinnedTarget.Sidebar) {
+            val focus = focusedWindow() ?: return
+            val rotation = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+                .getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: return
+            val generation = ++entryLaunchGeneration
+            // removeViewImmediate 后等待两次合成帧，再把执行权交给取屏类工具。
+            android.view.Choreographer.getInstance().postFrameCallback {
+                android.view.Choreographer.getInstance().postFrameCallback {
+                    if (generation == entryLaunchGeneration && overlay == null && isGestureEnvironmentAllowed()) {
+                        entryCatalog.launch(target) {
+                            generation == entryLaunchGeneration && overlay == null && isGestureEnvironmentAllowed() &&
+                                target in lastSettings.pinnedTargets && focusedWindow() === focus &&
+                                context.getSystemService(android.hardware.display.DisplayManager::class.java)
+                                    .getDisplay(Display.DEFAULT_DISPLAY)?.rotation == rotation
+                        }
+                    }
+                }
+            }
+            return
+        }
+        target as PinnedTarget.App
+        when (val result = launcher.launch(android.content.ComponentName(target.packageName, target.className))) {
             FreeformLaunchResult.Started -> Unit
             FreeformLaunchResult.TargetUnavailable ->
                 logger(Log.WARN, "FREEFORM_LAUNCH_TARGET_UNAVAILABLE", null)
@@ -531,19 +574,17 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
-    private fun focusedWindowPackage(): String? =
-        try {
-            val windowManagerService = readWindowManagerService()
-            val root = readField(windowManagerService, "mRoot") ?: return null
-            val display =
-                findMethod(root.javaClass, "getTopFocusedDisplayContent", 0).invoke(root) ?: return null
-            val window = readField(display, "mCurrentFocus") ?: return null
-            findMethod(window.javaClass, "getOwningPackage", 0).invoke(window) as? String
-        } catch (_: ReflectiveOperationException) {
-            null
-        } catch (_: RuntimeException) {
-            null
-        }
+    private fun focusedWindowPackage(): String? = try {
+        focusedWindow()?.let { findMethod(it.javaClass, "getOwningPackage", 0).invoke(it) as? String }
+    } catch (_: ReflectiveOperationException) { null }
+      catch (_: RuntimeException) { null }
+
+    private fun focusedWindow(): Any? = try {
+        val root = readField(readWindowManagerService(), "mRoot") ?: return null
+        val display = findMethod(root.javaClass, "getTopFocusedDisplayContent", 0).invoke(root) ?: return null
+        readField(display, "mCurrentFocus")
+    } catch (_: ReflectiveOperationException) { null }
+      catch (_: RuntimeException) { null }
 
     private fun readWindowManagerService(): Any {
         val atms = readField(controller, "mAtms") ?: throw NoSuchFieldException("mAtms")

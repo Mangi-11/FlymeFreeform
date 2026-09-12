@@ -11,26 +11,28 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
 import io.github.mangi.flymefreeform.apps.AppSelectionPolicy
+import io.github.mangi.flymefreeform.apps.SelectableEntry
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
+import io.github.mangi.flymefreeform.config.PinnedTarget
 import java.text.Collator
 import java.util.Locale
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicLong
 
-internal data class RadialAppEntry(
-    val component: ComponentName,
+internal data class RadialEntry(
+    val target: PinnedTarget,
     val label: String,
     val icon: Bitmap,
 )
 
 internal data class AppCatalogSnapshot(
-    val radialApps: List<RadialAppEntry> = emptyList(),
-    val panelApps: List<RadialAppEntry> = emptyList(),
+    val radialApps: List<RadialEntry> = emptyList(),
+    val panelApps: List<RadialEntry> = emptyList(),
     val settings: ModuleSettingsSnapshot = ModuleSettingsSnapshot(),
 ) {
     fun matches(settings: ModuleSettingsSnapshot): Boolean =
         this.settings.pinsSaved == settings.pinsSaved &&
-            this.settings.pinnedComponents == settings.pinnedComponents
+            this.settings.pinnedTargets == settings.pinnedTargets
 }
 
 /** 目录查询只在后台执行；发布后的 Bitmap 与列表供手势热路径只读。 */
@@ -45,6 +47,13 @@ internal class ColorOsAppCatalog(
     private val contentRevision = AtomicLong()
     private var cachedContent: CatalogContent? = null // 仅目录工作线程访问。
 
+    @Volatile private var sidebarEntries: List<SelectableEntry> = emptyList()
+
+    fun updateSidebarEntries(entries: List<SelectableEntry>, settings: ModuleSettingsSnapshot) {
+        sidebarEntries = entries.toList()
+        refresh(settings)
+    }
+
     fun refresh(settings: ModuleSettingsSnapshot, reloadApps: Boolean = true) {
         if (reloadApps) contentRevision.incrementAndGet()
         executor.execute {
@@ -53,7 +62,7 @@ internal class ColorOsAppCatalog(
             val content =
                 if (cached != null && cached.revision == revision &&
                     cached.settings.pinsSaved == settings.pinsSaved &&
-                    cached.settings.pinnedComponents == settings.pinnedComponents
+                    cached.settings.pinnedTargets == settings.pinnedTargets
                 ) {
                     cached
                 } else {
@@ -61,7 +70,7 @@ internal class ColorOsAppCatalog(
                 }
             cachedContent = content
             val shapedRadial = content.radialApps.map { entry ->
-                val drawable = content.radialSources[entry.component]
+                val drawable = content.radialSources[entry.target]
                 if (drawable == null) entry else {
                     try {
                         entry.copy(
@@ -75,7 +84,7 @@ internal class ColorOsAppCatalog(
                 }
             }
             shapedRadial.forEach { it.icon.prepareToDraw() }
-            publish(AppCatalogSnapshot(shapedRadial, content.panelApps, settings))
+            if (revision == contentRevision.get()) publish(AppCatalogSnapshot(shapedRadial, content.panelApps, settings))
         }
     }
 
@@ -88,10 +97,11 @@ internal class ColorOsAppCatalog(
                 .asSequence()
                 .filterNot { info -> info.componentName.packageName == MODULE_PACKAGE }
                 .mapNotNull(::toEntry)
-                .distinctBy(RadialAppEntry::component)
+                .distinctBy(RadialEntry::target)
                 .toList()
-        val byComponent = entries.associateBy(RadialAppEntry::component)
-        val recents = recentComponents().mapNotNull(byComponent::get).distinctBy(RadialAppEntry::component)
+        val nativeEntries = sidebarEntries.map { RadialEntry(it.target, it.label, it.icon) }
+        val byComponent = (entries + nativeEntries).associateBy(RadialEntry::target)
+        val recents = recentComponents().map { it.toTarget() }.mapNotNull(byComponent::get).distinctBy(RadialEntry::target)
         val collator = Collator.getInstance(Locale.getDefault())
         val alphabetical =
             entries.sortedWith { first, second ->
@@ -100,25 +110,26 @@ internal class ColorOsAppCatalog(
         val radial =
             AppSelectionPolicy.radialItems(
                 pinsSaved = settings.pinsSaved,
-                availablePins = settings.pinnedComponents.mapNotNull(byComponent::get),
+                availablePins = settings.pinnedTargets.mapNotNull(byComponent::get),
                 recent = recents,
                 all = alphabetical,
-                identity = RadialAppEntry::component,
+                identity = RadialEntry::target,
                 limit = io.github.mangi.flymefreeform.config.ModulePreferences.MAX_PINNED_APPS,
             )
-        val excluded = radial.mapTo(HashSet(), RadialAppEntry::component)
+        val excluded = radial.mapTo(HashSet(), RadialEntry::target)
         val panel =
             AppSelectionPolicy.panelItems(
                 recent = recents,
                 all = alphabetical,
                 excluded = excluded,
-                identity = RadialAppEntry::component,
+                identity = RadialEntry::target,
             )
-        val activityByComponent = activities.associateBy(LauncherActivityInfo::getComponentName)
+        val activityByComponent = activities.associateBy { it.componentName.toTarget() }
         val sources = radial.mapNotNull { entry ->
-            val info = activityByComponent[entry.component] ?: return@mapNotNull null
+            val info = activityByComponent[entry.target]
+            if (info == null) return@mapNotNull entry.target to BitmapDrawable(context.resources, entry.icon)
             try {
-                entry.component to info.getIcon(context.resources.displayMetrics.densityDpi)
+                entry.target to info.getIcon(context.resources.displayMetrics.densityDpi)
             } catch (_: RuntimeException) {
                 null
             }
@@ -130,10 +141,12 @@ internal class ColorOsAppCatalog(
     private data class CatalogContent(
         val revision: Long,
         val settings: ModuleSettingsSnapshot,
-        val radialApps: List<RadialAppEntry>,
-        val panelApps: List<RadialAppEntry>,
-        val radialSources: Map<ComponentName, Drawable>,
+        val radialApps: List<RadialEntry>,
+        val panelApps: List<RadialEntry>,
+        val radialSources: Map<PinnedTarget, Drawable>,
     )
+
+    private fun ComponentName.toTarget() = PinnedTarget.App(packageName, className)
 
     private fun recentComponents(): List<ComponentName> {
         val activityManager = context.getSystemService(ActivityManager::class.java) ?: return emptyList()
@@ -149,10 +162,10 @@ internal class ColorOsAppCatalog(
         }
     }
 
-    private fun toEntry(info: LauncherActivityInfo): RadialAppEntry? =
+    private fun toEntry(info: LauncherActivityInfo): RadialEntry? =
         try {
-            RadialAppEntry(
-                component = info.componentName,
+            RadialEntry(
+                target = info.componentName.toTarget(),
                 label = info.label?.toString()?.trim().orEmpty().ifEmpty { info.componentName.packageName },
                 icon = info.getIcon(context.resources.displayMetrics.densityDpi).toBitmap(),
             )

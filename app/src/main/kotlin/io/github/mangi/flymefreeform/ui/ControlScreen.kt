@@ -45,9 +45,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -62,6 +62,7 @@ import io.github.mangi.flymefreeform.ui.component.TopBarBackdrop
 import io.github.mangi.flymefreeform.ui.component.captureForTopBar
 import io.github.mangi.flymefreeform.ui.component.rememberTopBarBackdrop
 import io.github.mangi.flymefreeform.ui.component.topBarContainerColor
+import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownItem
@@ -78,7 +79,6 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlin.math.roundToInt
 
 @Composable
 internal fun ControlScreen(
@@ -329,8 +329,8 @@ private fun SettingsCard(
     val appsSummary =
         when {
             !state.settings.pinsSaved -> stringResource(R.string.radial_apps_recent_summary)
-            state.settings.pinnedComponents.isEmpty() -> stringResource(R.string.radial_apps_empty_summary)
-            else -> stringResource(R.string.radial_apps_count_summary, state.settings.pinnedComponents.size)
+            state.settings.pinnedTargets.isEmpty() -> stringResource(R.string.radial_apps_empty_summary)
+            else -> stringResource(R.string.radial_apps_count_summary, state.settings.pinnedTargets.size)
         }
     Card(modifier = Modifier.fillMaxWidth()) {
         SwitchPreference(

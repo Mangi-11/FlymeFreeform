@@ -1,7 +1,6 @@
 package io.github.mangi.flymefreeform.apps
 
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -11,6 +10,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
+import io.github.mangi.flymefreeform.config.PinnedTarget
 import java.text.Collator
 import java.util.Locale
 import java.util.concurrent.ArrayBlockingQueue
@@ -19,12 +19,6 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
-internal data class InstalledLauncherApp(
-    val component: ComponentName,
-    val label: String,
-    val icon: Bitmap,
-)
 
 internal class LauncherAppRepository(private val context: Context) {
     private val worker =
@@ -37,8 +31,8 @@ internal class LauncherAppRepository(private val context: Context) {
             { task -> Thread(task, THREAD_NAME) },
             ThreadPoolExecutor.DiscardOldestPolicy(),
         )
-    private val mutableApps = MutableStateFlow<List<InstalledLauncherApp>>(emptyList())
-    val apps: StateFlow<List<InstalledLauncherApp>> = mutableApps.asStateFlow()
+    private val mutableApps = MutableStateFlow<List<SelectableEntry>>(emptyList())
+    val apps: StateFlow<List<SelectableEntry>> = mutableApps.asStateFlow()
 
     private val packageReceiver =
         object : BroadcastReceiver() {
@@ -71,8 +65,9 @@ internal class LauncherAppRepository(private val context: Context) {
                     .filterNot { it.componentName.packageName == context.packageName }
                     .mapNotNull { info ->
                         try {
-                            InstalledLauncherApp(
-                                component = info.componentName,
+                            SelectableEntry(
+                                target = PinnedTarget.App(info.componentName.packageName, info.componentName.className),
+                                packageName = info.componentName.packageName,
                                 label = info.label?.toString()?.trim().orEmpty().ifEmpty { info.componentName.packageName },
                                 icon = info.getIcon(context.resources.displayMetrics.densityDpi).toBitmap(),
                             )
@@ -80,7 +75,7 @@ internal class LauncherAppRepository(private val context: Context) {
                             null
                         }
                     }
-                    .distinctBy(InstalledLauncherApp::component)
+                    .distinctBy(SelectableEntry::target)
                     .sortedWith { first, second -> collator.compare(first.label, second.label) }
                     .toList()
         }

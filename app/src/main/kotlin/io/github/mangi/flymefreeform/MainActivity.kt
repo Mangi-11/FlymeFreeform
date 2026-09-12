@@ -23,13 +23,18 @@ class MainActivity : ComponentActivity() {
             (application as FlymeFreeformApplication).frameworkConnectionRepository
         val appRepository =
             (application as FlymeFreeformApplication).launcherAppRepository
+        val sidebarRepository = (application as FlymeFreeformApplication).sidebarEntryRepository
         setContent {
             val state = repository.state.collectAsStateWithLifecycle().value
+            val sidebarCatalog = sidebarRepository.state.collectAsStateWithLifecycle().value
             val apps = appRepository.apps.collectAsStateWithLifecycle().value
             FlymeFreeformTheme {
                 FlymeFreeformNavHost(
                     state = state,
                     apps = apps,
+                    sidebarCatalog = sidebarCatalog,
+                    onRefreshCatalog = sidebarRepository::refresh,
+                    onCancelCatalog = sidebarRepository::cancel,
                     onModuleEnabledChange = repository::setModuleEnabled,
                     onLeftCornerEnabledChange = repository::setLeftCornerEnabled,
                     onRightCornerEnabledChange = repository::setRightCornerEnabled,
@@ -40,7 +45,7 @@ class MainActivity : ComponentActivity() {
                     onPauseInLandscapeChange = repository::setPauseInLandscape,
                     onPauseInGameModeChange = repository::setPauseInGameMode,
                     onRequestScopes = repository::requestMissingScopes,
-                    onPinnedComponentsChange = repository::setPinnedComponents,
+                    onPinnedTargetsChange = repository::setPinnedTargets,
                 )
             }
         }

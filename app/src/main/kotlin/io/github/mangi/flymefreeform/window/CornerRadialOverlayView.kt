@@ -24,10 +24,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -42,8 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
@@ -52,8 +52,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -75,8 +75,9 @@ import io.github.mangi.flymefreeform.gesture.CornerSide
 import io.github.mangi.flymefreeform.gesture.RadialGeometry
 import io.github.mangi.flymefreeform.gesture.RadialLayout
 import io.github.mangi.flymefreeform.platform.coloros.AppCatalogSnapshot
-import io.github.mangi.flymefreeform.platform.coloros.RadialAppEntry
+import io.github.mangi.flymefreeform.platform.coloros.RadialEntry
 import io.github.mangi.flymefreeform.ui.theme.CornerOverlayTheme
+import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -85,7 +86,6 @@ import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.math.roundToInt
 
 @SuppressLint("ViewConstructor")
 internal class CornerRadialOverlayView(
@@ -93,7 +93,7 @@ internal class CornerRadialOverlayView(
     private val listener: Listener,
 ) : AbstractComposeView(context), LifecycleOwner, SavedStateRegistryOwner {
     interface Listener {
-        fun onAppCommitted(entry: RadialAppEntry)
+        fun onEntryCommitted(entry: RadialEntry)
 
         fun onMorePanelRequested()
 
@@ -120,7 +120,7 @@ internal class CornerRadialOverlayView(
     private var catalog = AppCatalogSnapshot()
     private val radialClipPath = Path()
     private val radialImages = mutableStateOf<List<ImageBitmap>>(emptyList())
-    private var panelImages: Map<android.content.ComponentName, ImageBitmap> = emptyMap()
+    private var panelImages: Map<io.github.mangi.flymefreeform.config.PinnedTarget, ImageBitmap> = emptyMap()
     private var side = CornerSide.Right
     private var latestX = 0f
     private var latestY = 0f
@@ -151,7 +151,7 @@ internal class CornerRadialOverlayView(
     fun updateRadialAppearance(next: AppCatalogSnapshot) {
         if (disposed || dismissing || panelModeState.value) return
         // 只替换同一批应用的图像，不在滑选途中交换目标或重置入场动画。
-        if (catalog.radialApps.map { it.component } != next.radialApps.map { it.component }) return
+        if (catalog.radialApps.map { it.target } != next.radialApps.map { it.target }) return
         radialImages.value = next.radialApps.map { it.icon.asImageBitmap() }
     }
 
@@ -167,7 +167,7 @@ internal class CornerRadialOverlayView(
         latestX = x
         latestY = y
         radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
-        panelImages = catalog.panelApps.associate { entry -> entry.component to entry.icon.asImageBitmap() }
+        panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
         handoffEntryProgress.floatValue = 0f
@@ -642,7 +642,7 @@ internal class CornerRadialOverlayView(
             ) {
                 items(
                     items = catalog.panelApps,
-                    key = { entry -> entry.component.flattenToShortString() },
+                    key = { entry -> io.github.mangi.flymefreeform.config.PinnedTargetCodec.encode(entry.target) },
                 ) { entry ->
                     Column(
                         modifier =
@@ -650,11 +650,11 @@ internal class CornerRadialOverlayView(
                                 .fillMaxWidth()
                                 .height(cellHeight)
                                 .clickable(enabled = inputEnabled) {
-                                    listener.onAppCommitted(entry)
+                                    listener.onEntryCommitted(entry)
                                 },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        panelImages[entry.component]?.let { image ->
+                        panelImages[entry.target]?.let { image ->
                             Image(
                                 bitmap = image,
                                 contentDescription = null,
@@ -865,7 +865,7 @@ internal class CornerRadialOverlayView(
         invalidate()
     }
 
-    private fun dismissAnimated(pendingCommit: RadialAppEntry?) {
+    private fun dismissAnimated(pendingCommit: RadialEntry?) {
         if (dismissing || disposed) return
         dismissing = true
         removeCallbacks(timeout)
@@ -893,7 +893,7 @@ internal class CornerRadialOverlayView(
         } else {
             dismissNotified = true
             removeCallbacks(timeout)
-            listener.onAppCommitted(pendingCommit)
+            listener.onEntryCommitted(pendingCommit)
         }
     }
 
@@ -975,7 +975,7 @@ internal class CornerRadialOverlayView(
             0f
         }
 
-    private data class ExitRequest(val pendingCommit: RadialAppEntry?, val entryProgress: Float)
+    private data class ExitRequest(val pendingCommit: RadialEntry?, val entryProgress: Float)
 
     private companion object {
         val EMPTY_LAYOUT =

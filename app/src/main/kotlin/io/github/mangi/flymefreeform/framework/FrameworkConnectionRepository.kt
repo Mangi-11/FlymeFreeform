@@ -1,12 +1,12 @@
 package io.github.mangi.flymefreeform.framework
 
-import android.content.ComponentName
 import android.content.SharedPreferences
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
+import io.github.mangi.flymefreeform.config.PinnedTarget
 import java.util.IdentityHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -72,12 +72,12 @@ internal class FrameworkConnectionRepository {
     fun setPauseInGameMode(enabled: Boolean) =
         updateSettings { it.copy(pauseInGameMode = enabled) }
 
-    fun setPinnedComponents(components: List<ComponentName>) =
+    fun setPinnedTargets(components: List<PinnedTarget>) =
         updateSettings {
             it.copy(
                 pinsSaved = true,
-                pinnedComponents =
-                    components.distinct().take(ModulePreferences.MAX_PINNED_APPS),
+                pinnedTargets =
+                    io.github.mangi.flymefreeform.config.PinnedTargetCodec.normalize(components),
             )
         }
 

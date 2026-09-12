@@ -39,10 +39,10 @@
     <string name="corner_trigger_range_title">角落触发范围</string>
     <string name="corner_trigger_range_summary">范围越大越容易呼出；范围内的系统手势由扇形菜单接管</string>
     <string name="dp_value">%1$d dp</string>
-    <string name="radial_apps_title">扇形应用</string>
+    <string name="radial_apps_title">扇形快捷项</string>
     <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的六个应用</string>
-    <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>
-    <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
+    <string name="radial_apps_empty_summary">未固定快捷项，扇形中只显示“更多”</string>
+    <string name="radial_apps_count_summary">已固定 %1$d 项</string>
 
     <string name="outside_tap_close_title">点击小窗外关闭</string>
     <string name="outside_tap_close_summary">选择不执行、单击关闭或双击关闭；三种模式互斥</string>
@@ -52,19 +52,19 @@
     <string name="handle_swipe_up_to_mini_title">快速上滑切换为迷你窗</string>
     <string name="handle_swipe_up_to_mini_summary">在普通小窗底部横条快速向上滑，切换为迷你小窗</string>
 
-    <string name="radial_apps_screen_title">扇形应用</string>
-    <string name="radial_apps_screen_subtitle">按此顺序显示在扇形中，长按拖动调整顺序</string>
+    <string name="radial_apps_screen_title">扇形快捷项</string>
+    <string name="radial_apps_screen_subtitle">最多添加六项，长按拖动调整顺序，与侧边栏独立保存</string>
     <string name="added_apps_title">已添加</string>
-    <string name="added_apps_empty">未添加应用</string>
-    <string name="added_apps_empty_summary">在「选择应用」中添加后，按此顺序显示在扇形中</string>
-    <string name="pinned_app_missing">应用已卸载或当前不可用</string>
-    <string name="select_apps_action">选择应用</string>
+    <string name="added_apps_empty">未添加快捷项</string>
+    <string name="added_apps_empty_summary">添加应用、快捷入口或工具后，按此顺序显示在扇形中</string>
+    <string name="pinned_app_missing">条目已移除或当前不可用</string>
+    <string name="select_apps_action">添加快捷项</string>
     <string name="add_named_app_action">添加 %1$s</string>
     <string name="remove_named_app_action">移除 %1$s</string>
     <string name="available_apps_loading">正在读取应用</string>
     <string name="available_apps_loading_summary">应用列表将在后台准备完成后显示</string>
-    <string name="search_apps_placeholder">搜索应用</string>
-    <string name="no_matching_apps">未找到匹配应用</string>
+    <string name="search_apps_placeholder">搜索工具、快捷入口或应用</string>
+    <string name="no_matching_apps">未找到匹配项</string>
     <string name="back_action">返回</string>
 
     <string name="implementation_principle_title">实现方式</string>
@@ -75,4 +75,12 @@
     <string name="pause_in_landscape_summary">横屏时暂停模块增强，恢复竖屏后自动启用</string>
     <string name="pause_in_game_mode_title">游戏模式时暂停</string>
     <string name="pause_in_game_mode_summary">系统进入游戏模式时暂停模块增强，退出后自动启用</string>
+    <string name="entry_group_tools">工具</string>
+    <string name="entry_group_shortcuts">快捷入口</string>
+    <string name="entry_group_apps">应用</string>
+    <string name="sidebar_catalog_loading">正在读取侧边栏目录</string>
+    <string name="sidebar_catalog_loading_summary">读取当前可用的工具与快捷入口</string>
+    <string name="sidebar_catalog_unavailable">侧边栏目录暂不可用</string>
+    <string name="sidebar_catalog_retry_summary">请确认智能侧边栏已开启且模块作用域生效，点此重试</string>
+    <string name="retry_action">重试</string>
 </resources>
