@@ -20,6 +20,7 @@ import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
+import io.github.mangi.flymefreeform.gesture.CornerTriggerRegion
 import io.github.mangi.flymefreeform.gesture.GestureAction
 import io.github.mangi.flymefreeform.hook.ModuleEnvironmentState
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
@@ -80,6 +81,10 @@ internal class ColorOsFreeformCoordinator(
     private var pointerRegistered = false
     @Volatile
     private var pointerGeneration = 0L
+
+    /** 当前触摸序列是否以角落按下开始；只由输入线程读写，未开始的触摸完全不进热路径。 */
+    @Volatile
+    private var pointerTracking = false
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
@@ -183,8 +188,18 @@ internal class ColorOsFreeformCoordinator(
 
     private fun enqueuePointerEvent(event: MotionEvent, generation: Long) {
         if (!pointerRegistered || generation != pointerGeneration) return
+        // 热路径优化：只有落在角落触发区的 DOWN 才可能开始手势，其余触摸直接放过，
+        // 连 MotionEvent.obtain() 复制与跨线程 post 都不做。一旦开始跟踪，本次触摸序列
+        // （含 MOVE/POINTER_DOWN/UP/CANCEL）全部照旧转发，引擎状态机与取消逻辑保持不变。
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            pointerTracking = isCornerTouch(event)
+        }
+        if (!pointerTracking) return
+        val finishesTouch =
+            event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL
         val copy = QueuedPointerEvent(MotionEvent.obtain(event), generation)
         if (event.actionMasked != MotionEvent.ACTION_MOVE) {
+            if (finishesTouch) pointerTracking = false
             val precedingMove =
                 synchronized(pointerQueueLock) {
                     pendingMove.also { pendingMove = null }
@@ -205,6 +220,27 @@ internal class ColorOsFreeformCoordinator(
             }
         }
         if (shouldPost) handler.post(::drainPendingMove)
+    }
+
+    /** 与手势引擎使用同一套几何：命中任一已启用角落的触发半径才可能开始手势。 */
+    private fun isCornerTouch(event: MotionEvent): Boolean {
+        val settings = lastSettings
+        if (!settings.enabled) return false
+        if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return false
+        val metrics = context.resources.displayMetrics
+        return CornerTriggerRegion.detectSide(
+            x = event.x,
+            y = event.y,
+            displayWidth = metrics.widthPixels.toFloat(),
+            displayHeight = metrics.heightPixels.toFloat(),
+            radius =
+                CornerTriggerRegion.radiusPx(
+                    settings.cornerTriggerRangeDp,
+                    metrics.density,
+                ),
+            leftEnabled = settings.leftCornerEnabled,
+            rightEnabled = settings.rightCornerEnabled,
+        ) != null
     }
 
     private fun drainPendingMove() {
@@ -233,6 +269,7 @@ internal class ColorOsFreeformCoordinator(
 
     private fun unregisterPointerListener() {
         pointerGeneration++
+        pointerTracking = false
         clearPendingMove()
         val listener = pointerListener ?: return
         pointerRegistered = false
