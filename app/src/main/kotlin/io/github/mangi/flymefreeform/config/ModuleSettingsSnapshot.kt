@@ -2,6 +2,7 @@ package io.github.mangi.flymefreeform.config
 
 import android.content.ComponentName
 import android.content.SharedPreferences
+import io.github.mangi.flymefreeform.apps.AppTarget
 
 internal data class ModuleSettingsSnapshot(
     val enabled: Boolean = ModulePreferences.DEFAULT_ENABLED,
@@ -9,7 +10,7 @@ internal data class ModuleSettingsSnapshot(
     val rightCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
     val cornerTriggerRangeDp: Int = ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
     val pinsSaved: Boolean = false,
-    val pinnedComponents: List<ComponentName> = emptyList(),
+    val pinnedTargets: List<AppTarget> = emptyList(),
     val outsideTapCloseMode: OutsideTapCloseMode =
         ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
     val handleSwipeUpToMiniEnabled: Boolean =
@@ -42,7 +43,7 @@ internal data class ModuleSettingsSnapshot(
         if (pinsSaved) {
             editor.putString(
                 ModulePreferences.KEY_CORNER_PINS,
-                encodePinnedComponents(pinnedComponents),
+                encodePinnedTargets(pinnedTargets),
             )
         } else {
             editor.remove(ModulePreferences.KEY_CORNER_PINS)
@@ -89,7 +90,7 @@ internal data class ModuleSettingsSnapshot(
             val pinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_PINS)
             val pins =
                 if (pinsSaved) {
-                    decodePinnedComponents(
+                    decodePinnedTargets(
                         preferences.getString(ModulePreferences.KEY_CORNER_PINS, "") ?: "",
                     )
                 } else {
@@ -101,7 +102,7 @@ internal data class ModuleSettingsSnapshot(
                 rightCornerEnabled = rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 pinsSaved = pinsSaved,
-                pinnedComponents = pins,
+                pinnedTargets = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
                 pauseInLandscape = preferences.getBoolean(
@@ -115,18 +116,29 @@ internal data class ModuleSettingsSnapshot(
             )
         }
 
-        fun encodePinnedComponents(components: List<ComponentName>): String =
-            components
+        fun encodePinnedTargets(targets: List<AppTarget>): String =
+            targets
                 .asSequence()
-                .distinct()
+                .distinctBy(AppTarget::storageKey)
                 .take(ModulePreferences.MAX_PINNED_APPS)
-                .joinToString("\n", transform = ComponentName::flattenToString)
+                .joinToString("\n", transform = AppTarget::storageKey)
 
-        fun decodePinnedComponents(value: String): List<ComponentName> =
+        fun decodePinnedTargets(value: String): List<AppTarget> =
             PinnedComponentCodec
                 .decodeRaw(value)
                 .asSequence()
-                .mapNotNull(ComponentName::unflattenFromString)
+                .mapNotNull { encoded ->
+                    val component =
+                        ComponentName.unflattenFromString(PinnedComponentCodec.componentPart(encoded))
+                            ?: return@mapNotNull null
+                    AppTarget(
+                        component = component,
+                        userId = PinnedComponentCodec.parseUserSuffix(encoded) ?: DEFAULT_USER_ID,
+                    )
+                }
+                .distinctBy(AppTarget::storageKey)
                 .toList()
+
+        private const val DEFAULT_USER_ID = 0
     }
 }

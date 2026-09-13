@@ -1,6 +1,5 @@
 package io.github.mangi.flymefreeform.ui
 
-import android.content.ComponentName
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -9,6 +8,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import io.github.mangi.flymefreeform.apps.AppTarget
 import io.github.mangi.flymefreeform.apps.InstalledLauncherApp
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
@@ -36,7 +36,7 @@ internal fun FlymeFreeformNavHost(
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
-    onPinnedComponentsChange: (List<ComponentName>) -> Unit,
+    onPinnedTargetsChange: (List<AppTarget>) -> Unit,
 ) {
     val backStack = rememberNavBackStack(AppRoute.Settings)
     val popBackStack = remember(backStack) {
@@ -82,7 +82,7 @@ internal fun FlymeFreeformNavHost(
                         state = state,
                         apps = apps,
                         onBack = popBackStack,
-                        onPinnedComponentsChange = onPinnedComponentsChange,
+                        onPinnedTargetsChange = onPinnedTargetsChange,
                     )
                 }
             },

@@ -58,6 +58,9 @@
     <string name="added_apps_empty">未添加应用</string>
     <string name="added_apps_empty_summary">在「选择应用」中添加后，按此顺序显示在扇形中</string>
     <string name="pinned_app_missing">应用已卸载或当前不可用</string>
+    <string name="app_clone_summary">应用分身</string>
+    <string name="app_clone_name">%1$s（分身）</string>
+    <string name="app_clone_badge">分</string>
     <string name="select_apps_action">选择应用</string>
     <string name="add_named_app_action">添加 %1$s</string>
     <string name="remove_named_app_action">移除 %1$s</string>

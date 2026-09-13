@@ -1,7 +1,6 @@
 package io.github.mangi.flymefreeform.apps
 
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -11,6 +10,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
+import android.os.UserManager
 import java.text.Collator
 import java.util.Locale
 import java.util.concurrent.ArrayBlockingQueue
@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal data class InstalledLauncherApp(
-    val component: ComponentName,
+    val target: AppTarget,
     val label: String,
     val icon: Bitmap,
 )
@@ -63,16 +63,40 @@ internal class LauncherAppRepository(private val context: Context) {
     fun refresh() {
         worker.execute {
             val launcherApps = context.getSystemService(LauncherApps::class.java) ?: return@execute
+            val userManager = context.getSystemService(UserManager::class.java)
+            val profiles =
+                buildList {
+                    add(Process.myUserHandle())
+                    addAll(userManager?.userProfiles.orEmpty())
+                    addAll(
+                        try {
+                            launcherApps.profiles
+                        } catch (_: RuntimeException) {
+                            emptyList()
+                        },
+                    )
+                }.distinct()
             val collator = Collator.getInstance(Locale.getDefault())
             mutableApps.value =
-                launcherApps
-                    .getActivityList(null, Process.myUserHandle())
+                profiles
                     .asSequence()
-                    .filterNot { it.componentName.packageName == context.packageName }
-                    .mapNotNull { info ->
+                    .flatMap { user ->
+                        try {
+                            launcherApps
+                                .getActivityList(null, user)
+                                .asSequence()
+                                .map { info -> user to info }
+                        } catch (_: SecurityException) {
+                            emptySequence()
+                        } catch (_: RuntimeException) {
+                            emptySequence()
+                        }
+                    }
+                    .filterNot { (_, info) -> info.componentName.packageName == context.packageName }
+                    .mapNotNull { (user, info) ->
                         try {
                             InstalledLauncherApp(
-                                component = info.componentName,
+                                target = AppTarget(info.componentName, user.identifier),
                                 label = info.label?.toString()?.trim().orEmpty().ifEmpty { info.componentName.packageName },
                                 icon = info.getIcon(context.resources.displayMetrics.densityDpi).toBitmap(),
                             )
@@ -80,7 +104,7 @@ internal class LauncherAppRepository(private val context: Context) {
                             null
                         }
                     }
-                    .distinctBy(InstalledLauncherApp::component)
+                    .distinctBy { app -> app.target.storageKey }
                     .sortedWith { first, second -> collator.compare(first.label, second.label) }
                     .toList()
         }
