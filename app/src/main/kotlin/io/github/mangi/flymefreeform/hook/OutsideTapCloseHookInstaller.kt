@@ -197,7 +197,18 @@ internal class OutsideTapCloseHookInstaller(
             settings: io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot,
         ) {
             interruptAll()
-            val knownCaptions = synchronized(captions) { captions.keys.toList() }
+            // WeakHashMap 在迭代期间若发生 GC，`getTable()` 会顺手 expunge 掉失效条目，
+            // 迭代器会提前 nextEntry() 失败抛 NoSuchElementException；取到多少就刷新多少。
+            val knownCaptions =
+                synchronized(captions) {
+                    val snapshot = ArrayList<Any>(captions.size)
+                    try {
+                        captions.keys.forEach { caption -> snapshot += caption }
+                    } catch (_: NoSuchElementException) {
+                        // 已收集到的条目足够继续刷新，剩余条目会在下次回调处理。
+                    }
+                    snapshot
+                }
             knownCaptions.forEach { caption ->
                 try {
                     updateCaptionTouchRegion.invokeUnwrapped(caption)
