@@ -408,6 +408,16 @@ internal class ColorOsFreeformCoordinator(
                 newInstance = true
             }
         }
+        if (flexible) {
+            // 小窗把主界面从这个 task 里搬走/复制走之后，二级界面留下的 task 变空仍会占着
+            // 多任务里的一张卡片（系统默认不回收空 task）。这里把它标记成"空了就回收"，
+            // 与原生入口的表现对齐。字段名按可用性探测，取不到只记日志、不影响启动。
+            logger(
+                Log.INFO,
+                "PARALLEL_RECYCLE user=${entry.target.userId} field=${markFocusedTaskRecyclable()}",
+                null,
+            )
+        }
         logger(
             Log.INFO,
             "FREEFORM_LAUNCH_REQUEST user=${entry.target.userId} " +
@@ -540,7 +550,42 @@ internal class ColorOsFreeformCoordinator(
     }
 
     /**
-     * 已有的主界面 task id：按 `userId` 在窗口容器树里找，主应用与分身各找各的。
+     * 把当前聚焦 task 标记成"变空即回收"，并返回真正写入的字段名（供日志核对）。
+     * 取不到字段时返回 `none`，调用方不受影响。
+     */
+    private fun markFocusedTaskRecyclable(): String =
+        try {
+            val atms = readField(controller, "mAtms") ?: return "no-atms"
+            val root = readField(atms, "mRootWindowContainer") ?: return "no-root"
+            val task = findMethod(root.javaClass, "getTopDisplayFocusedRootTask", 0).invoke(root) ?: return "no-task"
+            TASK_RECYCLABLE_FIELDS.firstNotNullOfOrNull { name ->
+                val field = findField(task.javaClass, name) ?: return@firstNotNullOfOrNull null
+                try {
+                    field.setBoolean(task, true)
+                    name
+                } catch (_: IllegalArgumentException) {
+                    null
+                }
+            } ?: "none"
+        } catch (_: ReflectiveOperationException) {
+            "reflection-failed"
+        } catch (_: RuntimeException) {
+            "runtime-failed"
+        }
+
+    private fun findField(type: Class<*>, name: String): java.lang.reflect.Field? {
+        var current: Class<*>? = type
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name).also { it.isAccessible = true }
+            } catch (_: NoSuchFieldException) {
+                current = current.superclass
+            }
+        }
+        return null
+    }
+
+    /** 已有的主界面 task id：按 `userId` 在窗口容器树里找，主应用与分身各找各的。
      * 找不到时返回 null，调用方退回"新开实例"以保证小窗至少能出现。
      */
     private fun findMainSurfaceTaskId(target: AppTarget): Int? =
@@ -783,6 +828,7 @@ internal class ColorOsFreeformCoordinator(
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
         const val UNKNOWN_USER = -1
         const val NO_SOURCE_TASK = -1
+        val TASK_RECYCLABLE_FIELDS = listOf("autoRemoveRecents", "mAutoRemoveRecents")
         const val USER_ID_SOURCE_ACTIVITY_INFO = "activityInfo"
         const val USER_ID_SOURCE_ACTIVITY_FIELD = "activityField"
         const val USER_ID_SOURCE_TASK_FIELD = "taskField"

@@ -21,11 +21,12 @@ internal object ParallelWindowPolicy {
     /** 目前只放开微信：它的主界面可以被重新拉起成第二个窗口。 */
     const val TARGET_PACKAGE = "com.tencent.mm"
 
-    /** 由插件承载的二级界面：朋友圈、视频号、转发等。 */
-    private const val PLUGIN_SEGMENT = ".plugin."
-
-    /** 聊天窗口属于一级体验，不算二级界面。 */
-    private const val CHATTING_SEGMENT = "chatting"
+    /**
+     * 聊天窗口：`com.tencent.mm.ui.chatting.ChattingUI`（含历史版本的后缀变体）才算一级体验。
+     * 只匹配 `chatting.ChattingUI` 而不是整段 `chatting`，避免把转发、选择联系人等
+     * 同样挂在 `ui.chatting.*` 下的页面也算成主界面。
+     */
+    private const val CHATTING_WINDOW_SEGMENT = "chatting.ChattingUI"
 
     internal enum class Decision {
         /** 普通启动，与功能开启前一致。 */
@@ -40,14 +41,17 @@ internal object ParallelWindowPolicy {
 
     fun isTarget(packageName: String): Boolean = packageName == TARGET_PACKAGE
 
-    /** 启动组件本身与聊天窗口算主界面；插件页算二级界面。 */
+    /**
+     * 用**白名单**判定主界面：只有启动组件本身（聊天列表）与聊天窗口算主界面，
+     * 其余页面一律算二级界面。早先按 `.plugin.` 黑名单判断，会把转发、搜索等
+     * 不挂在插件包下的页面误判成主界面，导致这些页面打不开平行小窗。
+     */
     fun isMainSurface(
         launcherClassName: String,
         topClassName: String,
     ): Boolean =
         topClassName == launcherClassName ||
-            topClassName.contains(CHATTING_SEGMENT, ignoreCase = true) ||
-            !topClassName.contains(PLUGIN_SEGMENT)
+            topClassName.contains(CHATTING_WINDOW_SEGMENT, ignoreCase = true)
 
     fun decide(
         targetPackage: String,

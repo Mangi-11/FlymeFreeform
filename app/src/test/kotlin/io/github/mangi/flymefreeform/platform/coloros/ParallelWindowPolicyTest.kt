@@ -83,4 +83,35 @@ class ParallelWindowPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun treatsNonLauncherNonChatPagesAsSecondLevel() {
+        // 白名单判定：转发、搜索等不挂在插件包下的页面同样是二级界面，也要能开平行小窗。
+        assertFalse(
+            ParallelWindowPolicy.isMainSurface(
+                launcher,
+                "com.tencent.mm.ui.transmit.SelectConversationUI",
+            ),
+        )
+        assertFalse(
+            ParallelWindowPolicy.isMainSurface(
+                launcher,
+                "com.tencent.mm.ui.chatting.SelectConversationUI",
+            ),
+        )
+        assertFalse(
+            ParallelWindowPolicy.isMainSurface(
+                launcher,
+                "com.tencent.mm.plugin.brandservice.ui.timeline.preload.ui.TmplWebViewMMUI",
+            ),
+        )
+        // 对应地，这些页面会走平行小窗而不是普通启动。
+        assertEquals(
+            ParallelWindowPolicy.Decision.FlexibleReuse,
+            decide(
+                topClass = "com.tencent.mm.ui.transmit.SelectConversationUI",
+                taskHasLauncher = false,
+            ),
+        )
+    }
 }
