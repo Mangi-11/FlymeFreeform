@@ -13,10 +13,10 @@ class RadialGeometryTest {
     }
 
     @Test
-    fun sevenItemsUseCenteredTwelveDegreeSlots() {
+    fun listOrderRunsFromOuterSlotTowardMore() {
         val layout = RadialGeometry.layout(CornerSide.Left, 400f, 890f, 242f, 7)
         val degrees = layout.itemCenters.map { RadialGeometry.polarAngle(layout, it) * 180f / kotlin.math.PI.toFloat() }
-        degrees.zip(listOf(-21f, -33f, -45f, -57f, -69f, -81f, -9f)).forEach { (actual, expected) ->
+        degrees.zip(listOf(-81f, -69f, -57f, -45f, -33f, -21f, -9f)).forEach { (actual, expected) ->
             assertEquals(expected, actual, 0.001f)
         }
         val onlyMore = RadialGeometry.layout(CornerSide.Left, 400f, 890f, 242f, 1)

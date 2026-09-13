@@ -33,9 +33,9 @@ internal object RadialGeometry {
         val step = SPAN_DEGREES / itemCount
         val centers =
             List(itemCount) { index ->
-                // 列表末项是“更多”：它占最靠近角落的 0 号槽；应用从 1 号槽开始
-                // 向上展开，避免任何应用的圆心落在屏幕边缘而被裁掉一半。
-                val slot = if (index == itemCount - 1) 0 else index + 1
+                // “更多”占最靠近角落的 0 号槽；应用按列表顺序从外侧向角落排列，
+                // 因此列表第一个应用使用最外侧的槽位，避免设置页与扇形视觉顺序相反。
+                val slot = itemCount - index - 1
                 val angle =
                     if (side == CornerSide.Left) {
                         -SAFE_DEGREES - (slot + 0.5f) * step
