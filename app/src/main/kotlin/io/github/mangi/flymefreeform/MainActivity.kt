@@ -39,6 +39,8 @@ class MainActivity : ComponentActivity() {
                         repository::setHandleSwipeUpToMiniEnabled,
                     onPauseInLandscapeChange = repository::setPauseInLandscape,
                     onPauseInGameModeChange = repository::setPauseInGameMode,
+                    onPreventMistouchInLandscapeChange = repository::setPreventMistouchInLandscape,
+                    onPreventMistouchInGameModeChange = repository::setPreventMistouchInGameMode,
                     onRequestScopes = repository::requestMissingScopes,
                     onPinnedComponentsChange = repository::setPinnedComponents,
                 )

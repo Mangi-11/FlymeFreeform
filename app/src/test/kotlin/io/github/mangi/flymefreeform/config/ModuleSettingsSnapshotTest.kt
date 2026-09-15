@@ -16,6 +16,8 @@ class ModuleSettingsSnapshotTest {
         assertTrue(snapshot.handleSwipeUpToMiniEnabled)
         assertTrue(snapshot.pauseInLandscape)
         assertTrue(snapshot.pauseInGameMode)
+        assertFalse(snapshot.preventMistouchInLandscape)
+        assertFalse(snapshot.preventMistouchInGameMode)
     }
 
     @Test
@@ -83,6 +85,41 @@ class ModuleSettingsSnapshotTest {
 
         val allowBoth = defaults.copy(pauseInLandscape = false, pauseInGameMode = false)
         assertFalse(allowBoth.isPausedByEnvironment(landscape = true, gameMode = true))
+    }
+
+    @Test
+    fun preventionSwitchesRoundTripIndependently() {
+        for (landscape in listOf(false, true)) {
+            for (game in listOf(false, true)) {
+                val preferences = InMemoryPreferences()
+                val expected = ModuleSettingsSnapshot(
+                    preventMistouchInLandscape = landscape,
+                    preventMistouchInGameMode = game,
+                )
+                expected.writeTo(preferences.edit()).commit()
+                assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+            }
+        }
+    }
+
+    @Test
+    fun preventionMatchesEitherEnvironmentAndPauseTakesPriority() {
+        for (landscape in listOf(false, true)) {
+            for (game in listOf(false, true)) {
+                val settings = ModuleSettingsSnapshot(
+                    pauseInLandscape = false,
+                    pauseInGameMode = false,
+                    preventMistouchInLandscape = landscape,
+                    preventMistouchInGameMode = game,
+                )
+                assertFalse(settings.requiresGestureConfirmation(landscape = false, gameMode = false))
+                assertEquals(landscape, settings.requiresGestureConfirmation(landscape = true, gameMode = false))
+                assertEquals(game, settings.requiresGestureConfirmation(landscape = false, gameMode = true))
+                assertEquals(landscape || game, settings.requiresGestureConfirmation(landscape = true, gameMode = true))
+                assertFalse(settings.copy(pauseInLandscape = true).requiresGestureConfirmation(true, true))
+                assertFalse(settings.copy(pauseInGameMode = true).requiresGestureConfirmation(true, true))
+            }
+        }
     }
 
     @Test

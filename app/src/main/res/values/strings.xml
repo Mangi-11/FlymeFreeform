@@ -75,4 +75,8 @@
     <string name="pause_in_landscape_summary">横屏时暂停模块增强，恢复竖屏后自动启用</string>
     <string name="pause_in_game_mode_title">游戏模式时暂停</string>
     <string name="pause_in_game_mode_summary">系统进入游戏模式时暂停模块增强，退出后自动启用</string>
+    <string name="prevent_mistouch_in_landscape_title">横屏时防误触</string>
+    <string name="prevent_mistouch_in_landscape_summary">横屏时，需在 2 秒内从同一侧滑动两次才唤出菜单</string>
+    <string name="prevent_mistouch_in_game_mode_title">游戏模式时防误触</string>
+    <string name="prevent_mistouch_in_game_mode_summary">游戏模式时，需在 2 秒内从同一侧滑动两次才唤出菜单</string>
 </resources>
