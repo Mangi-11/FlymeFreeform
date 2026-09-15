@@ -16,7 +16,7 @@ class AdaptiveOverlayGeometryTest {
             density = 1f, radialItemCount = 7, radialInsets = radialInsets,
             fontScale = 1f, panelItemCount = 40, anchorOnLeft = true,
         )
-        assertEquals(242f, metrics.radial.radius, 0.001f)
+        assertEquals(242.75f, metrics.radial.radius, 0.001f)
         assertTrue(metrics.panel.bounds.left >= panelInsets.left)
         val layout = io.github.mangi.flymefreeform.gesture.RadialGeometry.layout(
             io.github.mangi.flymefreeform.gesture.CornerSide.Left,

@@ -8,6 +8,7 @@ internal data class ModuleSettingsSnapshot(
     val leftCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
     val rightCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
     val cornerTriggerRangeDp: Int = ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
+    val radialMenu: RadialMenuSettings = RadialMenuSettings(),
     val pinsSaved: Boolean = false,
     val pinnedComponents: List<ComponentName> = emptyList(),
     val outsideTapCloseMode: OutsideTapCloseMode =
@@ -27,7 +28,12 @@ internal data class ModuleSettingsSnapshot(
         (pauseInLandscape && landscape) || (pauseInGameMode && gameMode)
 
     fun writeTo(editor: SharedPreferences.Editor): SharedPreferences.Editor {
+        val radial = radialMenu.sanitized()
         editor
+            .putInt(ModulePreferences.KEY_RADIAL_ICON_SIZE_DP, radial.iconSizeDp)
+            .putInt(ModulePreferences.KEY_RADIAL_RADIUS_DP, radial.radiusDp)
+            .putInt(ModulePreferences.KEY_RADIAL_RING_GAP_DP, radial.ringGapDp)
+            .putInt(ModulePreferences.KEY_RADIAL_RING_COUNT, radial.ringCount)
             .putBoolean(ModulePreferences.KEY_MODULE_ENABLED, enabled)
             .putBoolean(ModulePreferences.KEY_LEFT_CORNER_ENABLED, leftCornerEnabled)
             .putBoolean(ModulePreferences.KEY_RIGHT_CORNER_ENABLED, rightCornerEnabled)
@@ -103,11 +109,18 @@ internal data class ModuleSettingsSnapshot(
                 } else {
                     emptyList()
                 }
+            val radialDefaults = RadialMenuSettings()
             return ModuleSettingsSnapshot(
                 enabled = enabled,
                 leftCornerEnabled = leftEnabled,
                 rightCornerEnabled = rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
+                radialMenu = RadialMenuSettings(
+                    iconSizeDp = preferences.getInt(ModulePreferences.KEY_RADIAL_ICON_SIZE_DP, radialDefaults.iconSizeDp),
+                    radiusDp = preferences.getInt(ModulePreferences.KEY_RADIAL_RADIUS_DP, radialDefaults.radiusDp),
+                    ringGapDp = preferences.getInt(ModulePreferences.KEY_RADIAL_RING_GAP_DP, radialDefaults.ringGapDp),
+                    ringCount = preferences.getInt(ModulePreferences.KEY_RADIAL_RING_COUNT, radialDefaults.ringCount),
+                ).sanitized(),
                 pinsSaved = pinsSaved,
                 pinnedComponents = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
@@ -135,7 +148,6 @@ internal data class ModuleSettingsSnapshot(
             components
                 .asSequence()
                 .distinct()
-                .take(ModulePreferences.MAX_PINNED_APPS)
                 .joinToString("\n", transform = ComponentName::flattenToString)
 
         fun decodePinnedComponents(value: String): List<ComponentName> =

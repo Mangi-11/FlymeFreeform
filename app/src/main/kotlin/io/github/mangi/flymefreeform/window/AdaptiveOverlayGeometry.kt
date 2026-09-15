@@ -1,5 +1,7 @@
 package io.github.mangi.flymefreeform.window
 
+import io.github.mangi.flymefreeform.config.RadialMenuSettings
+import io.github.mangi.flymefreeform.gesture.RadialRing
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -33,6 +35,7 @@ internal data class RadialVisualMetrics(
     val selectionKeepRadius: Float,
     val itemPadding: Float,
     val pixelsPerBaseDp: Float,
+    val rings: List<RadialRing> = emptyList(),
 )
 
 internal data class PanelVisualMetrics(
@@ -81,6 +84,8 @@ internal object AdaptiveOverlayGeometry {
         fontScale: Float,
         panelItemCount: Int,
         anchorOnLeft: Boolean,
+        radialSettings: RadialMenuSettings = RadialMenuSettings(),
+        shortEdgeDp: Int = floor(minOf(width, height) / density).toInt(),
     ): AdaptiveOverlayMetrics {
         require(width > 0f && height > 0f)
 
@@ -94,7 +99,7 @@ internal object AdaptiveOverlayGeometry {
         val panelReferenceRadius =
             min(shortEdge * PANEL_REFERENCE_WIDTH_FRACTION, safeHeight * PANEL_REFERENCE_HEIGHT_FRACTION)
                 .coerceAtLeast(plateDiameter * PANEL_REFERENCE_MIN_PLATE_DISTANCE)
-        val radial = RadialIconGeometry.fit(width, height, density, radialInsets, radialItemCount)
+        val radial = RadialIconGeometry.fit(width, height, density, radialInsets, radialItemCount, radialSettings, shortEdgeDp)
 
         val outerMargin = plateDiameter * OUTER_MARGIN_FRACTION
         val requestedContentHorizontalPadding = plateDiameter * PANEL_HORIZONTAL_PADDING_FRACTION

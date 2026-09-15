@@ -762,6 +762,9 @@ internal class CornerRadialOverlayView(
                 density = resources.displayMetrics.density,
                 radialItemCount = catalog.radialApps.size + 1,
                 radialInsets = radialInsets,
+                radialSettings = catalog.settings.radialMenu,
+                // 使用目录准备时的尺寸，防止显示缩放变化与后台刷新竞争造成容量不匹配。
+                shortEdgeDp = catalog.shortEdgeDp,
                 fontScale = resources.configuration.fontScale,
                 panelItemCount = catalog.panelApps.size,
                 anchorOnLeft = side == CornerSide.Left,
@@ -775,6 +778,7 @@ internal class CornerRadialOverlayView(
                 offsetX = radialInsets.left,
                 offsetY = radialInsets.top,
                 radius = metrics.radial.radius,
+                rings = metrics.radial.rings,
                 itemCount = catalog.radialApps.size + 1,
             )
         if (!panelModeState.value && !dismissing) updateGestureFromLatestPoint()

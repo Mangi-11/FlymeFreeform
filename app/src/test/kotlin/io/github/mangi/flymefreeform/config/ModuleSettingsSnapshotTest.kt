@@ -8,6 +8,15 @@ import org.junit.Test
 
 class ModuleSettingsSnapshotTest {
     @Test
+    fun radialSettingsRoundTripAndIgnoreRetiredAppearanceKeys() {
+        val preferences = InMemoryPreferences()
+        val expected = ModuleSettingsSnapshot(radialMenu = RadialMenuSettings(32, 360, 18, 4))
+        expected.writeTo(preferences.edit()).commit()
+        assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+        assertEquals(RadialMenuSettings(), ModuleSettingsSnapshot.readFrom(InMemoryPreferences()).radialMenu)
+    }
+
+    @Test
     fun missingKeysUseProductDefaults() {
         val snapshot = ModuleSettingsSnapshot.readFrom(InMemoryPreferences())
 

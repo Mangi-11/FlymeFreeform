@@ -54,7 +54,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.github.mangi.flymefreeform.R
 import io.github.mangi.flymefreeform.apps.InstalledLauncherApp
-import io.github.mangi.flymefreeform.config.ModulePreferences
+import io.github.mangi.flymefreeform.config.screenShortEdgeDp
+import io.github.mangi.flymefreeform.gesture.RadialMenuGeometry
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
 import io.github.mangi.flymefreeform.ui.component.TopBarBackdrop
 import io.github.mangi.flymefreeform.ui.component.captureForTopBar
@@ -85,6 +88,10 @@ internal fun PinnedAppsScreen(
     onBack: () -> Unit,
     onPinnedComponentsChange: (List<ComponentName>) -> Unit,
 ) {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val shortEdgeDp = remember(context, configuration) { screenShortEdgeDp(context) }
+    val capacity = RadialMenuGeometry.calculate(state.settings.radialMenu, shortEdgeDp).pinnedCapacity
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerQuery by remember { mutableStateOf("") }
     // 拖动或增删后的本地顺序；远端配置回读同步前以它为准，避免列表闪回旧顺序
@@ -109,7 +116,7 @@ internal fun PinnedAppsScreen(
                     if (isWide) {
                         SmallTopAppBar(
                             title = title,
-                            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
+                            subtitle = stringResource(R.string.radial_apps_screen_subtitle, capacity),
                             color = topBarColor,
                             navigationIcon = navigationIcon,
                             scrollBehavior = scrollBehavior,
@@ -117,7 +124,7 @@ internal fun PinnedAppsScreen(
                     } else {
                         TopAppBar(
                             title = title,
-                            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
+                            subtitle = stringResource(R.string.radial_apps_screen_subtitle, capacity),
                             color = topBarColor,
                             navigationIcon = navigationIcon,
                             scrollBehavior = scrollBehavior,
@@ -154,7 +161,11 @@ internal fun PinnedAppsScreen(
                 ) {
                 item(key = "added_intro") {
                     Text(
-                        text = stringResource(R.string.added_apps_title),
+                        text = if (displayed.size > capacity) {
+                            stringResource(R.string.radial_apps_overflow_summary, displayed.size, capacity)
+                        } else {
+                            stringResource(R.string.radial_apps_count_summary, displayed.size, capacity)
+                        },
                         modifier =
                             Modifier
                                 .padding(start = 16.dp, bottom = 8.dp)
@@ -346,7 +357,7 @@ internal fun PinnedAppsScreen(
                                                     displayed.filterNot { it == app.component }
                                                 } else {
                                                     (displayed + app.component)
-                                                        .take(ModulePreferences.MAX_PINNED_APPS)
+                                                        .take(capacity)
                                                 }
                                             localOrder = updated
                                             onPinnedComponentsChange(updated)
@@ -363,7 +374,7 @@ internal fun PinnedAppsScreen(
                                         role = Role.Button,
                                         enabled =
                                             state.canChangeSettings &&
-                                                (added || displayed.size < ModulePreferences.MAX_PINNED_APPS),
+                                                (added || displayed.size < capacity),
                                     )
                                 }
                         }

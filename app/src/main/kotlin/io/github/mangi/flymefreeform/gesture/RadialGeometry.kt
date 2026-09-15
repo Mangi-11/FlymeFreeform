@@ -27,9 +27,31 @@ internal object RadialGeometry {
         itemCount: Int,
         offsetX: Float = 0f,
         offsetY: Float = 0f,
+        rings: List<RadialRing>? = null,
     ): RadialLayout {
         val origin = GesturePoint(offsetX + if (side == CornerSide.Left) 0f else width, offsetY + height)
         if (itemCount <= 0) return RadialLayout(side, origin, radius, emptyList())
+        if (rings != null) {
+            require(itemCount <= rings.sumOf { it.capacity })
+            val slots = mutableListOf<GesturePoint>()
+            var remaining = itemCount
+            for (ring in rings) {
+                val count = minOf(remaining, ring.capacity)
+                if (count == 0) break
+                val span = PI.toFloat() / 2f - 2f * ring.edgeAngle
+                repeat(count) { slot ->
+                    val angleFromEdge = if (count == 1) PI.toFloat() / 4f
+                        else ring.edgeAngle + span * slot / (count - 1)
+                    val angle = if (side == CornerSide.Left) -angleFromEdge
+                        else -PI.toFloat() + angleFromEdge
+                    slots += GesturePoint(origin.x + cos(angle) * ring.radius,
+                        origin.y + sin(angle) * ring.radius)
+                }
+                remaining -= count
+            }
+            // “更多”始终为最后一个条目，位于最外圈靠近底边的第一个槽位。
+            return RadialLayout(side, origin, radius, slots.drop(1) + slots.first())
+        }
         val step = SPAN_DEGREES / itemCount
         val centers =
             List(itemCount) { index ->

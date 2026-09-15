@@ -49,11 +49,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.mangi.flymefreeform.R
 import io.github.mangi.flymefreeform.config.ModulePreferences
+import io.github.mangi.flymefreeform.config.screenShortEdgeDp
+import io.github.mangi.flymefreeform.gesture.RadialMenuGeometry
+import io.github.mangi.flymefreeform.config.RadialMenuSettings
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionIssue
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
@@ -87,6 +92,7 @@ internal fun ControlScreen(
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
+    onRadialMenuChange: (RadialMenuSettings) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
@@ -99,9 +105,16 @@ internal fun ControlScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberTopBarBackdrop()
     val topBarColor = topBarContainerColor(backdrop)
+    val configuration = LocalConfiguration.current
+    val context = LocalContext.current
+    val shortEdgeDp = remember(context, configuration) { screenShortEdgeDp(context) }
+    var radialPreview by remember { mutableStateOf<RadialMenuSettings?>(null) }
     var cornerRangePreviewDp by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(state.canChangeSettings) {
-        if (!state.canChangeSettings) cornerRangePreviewDp = null
+        if (!state.canChangeSettings) {
+            cornerRangePreviewDp = null
+            radialPreview = null
+        }
     }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val windowWidth = maxWidth
@@ -163,6 +176,15 @@ internal fun ControlScreen(
                             onCornerTriggerRangeChange,
                             onCornerRangePreviewChange = { cornerRangePreviewDp = it },
                             onNavigateToPinnedApps,
+                            shortEdgeDp,
+                        )
+                    }
+                    item(key = "radial_appearance") {
+                        RadialSettingsCard(
+                            state = state,
+                            shortEdgeDp = shortEdgeDp,
+                            onPreviewChange = { radialPreview = it },
+                            onCommit = onRadialMenuChange,
                         )
                     }
                     item(key = "window_interaction") {
@@ -185,6 +207,13 @@ internal fun ControlScreen(
                     item(key = "about") { AboutCard() }
                 }
             }
+        }
+        radialPreview?.let { preview ->
+            RadialSettingsPreview(
+                settings = preview,
+                shortEdgeDp = shortEdgeDp,
+                onLeft = state.settings.leftCornerEnabled && !state.settings.rightCornerEnabled,
+            )
         }
         cornerRangePreviewDp?.let { rangeDp ->
             CornerRangePreview(
@@ -352,7 +381,9 @@ private fun SettingsCard(
     onCornerTriggerRangeChange: (Int) -> Unit,
     onCornerRangePreviewChange: (Int?) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
+    shortEdgeDp: Int,
 ) {
+    val capacity = RadialMenuGeometry.calculate(state.settings.radialMenu, shortEdgeDp).pinnedCapacity
     val moduleSummary =
         when {
             state.isUpdating -> stringResource(R.string.module_enabled_summary_updating)
@@ -364,9 +395,12 @@ private fun SettingsCard(
         }
     val appsSummary =
         when {
-            !state.settings.pinsSaved -> stringResource(R.string.radial_apps_recent_summary)
+            !state.settings.pinsSaved -> stringResource(R.string.radial_apps_recent_summary, capacity)
+            state.settings.pinnedComponents.size > capacity -> stringResource(
+                R.string.radial_apps_overflow_summary, state.settings.pinnedComponents.size, capacity,
+            )
             state.settings.pinnedComponents.isEmpty() -> stringResource(R.string.radial_apps_empty_summary)
-            else -> stringResource(R.string.radial_apps_count_summary, state.settings.pinnedComponents.size)
+            else -> stringResource(R.string.radial_apps_count_summary, state.settings.pinnedComponents.size, capacity)
         }
     Card(modifier = Modifier.fillMaxWidth()) {
         SwitchPreference(
@@ -416,7 +450,7 @@ private fun SettingsCard(
 }
 
 @Composable
-private fun RemoteDpSliderPreference(
+internal fun RemoteDpSliderPreference(
     icon: ImageVector,
     confirmedValue: Int,
     isUpdating: Boolean,
@@ -425,10 +459,12 @@ private fun RemoteDpSliderPreference(
     summary: String,
     onPreviewChange: (Int?) -> Unit,
     onCommit: (Int) -> Unit,
+    range: IntRange = ModulePreferences.MIN_CORNER_TRIGGER_RANGE_DP..ModulePreferences.MAX_CORNER_TRIGGER_RANGE_DP,
+    unitIsDp: Boolean = true,
 ) {
     var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
     var isDragging by remember { mutableStateOf(false) }
-    LaunchedEffect(confirmedValue, isUpdating, enabled) {
+    LaunchedEffect(confirmedValue, isUpdating, enabled, range) {
         if (!enabled) {
             isDragging = false
             onPreviewChange(null)
@@ -436,30 +472,28 @@ private fun RemoteDpSliderPreference(
         if (!isDragging && !isUpdating) draftValue = confirmedValue.toFloat()
     }
     SliderPreference(
-        value = draftValue,
+        value = draftValue.coerceIn(range.first.toFloat(), range.last.toFloat()),
         onValueChange = { value ->
             isDragging = true
-            val draft = ModulePreferences.coerceCornerTriggerRangeDp(value.roundToInt())
+            val draft = value.roundToInt().coerceIn(range)
             draftValue = draft.toFloat()
             onPreviewChange(draft)
         },
         title = title,
         summary = summary,
-        valueText = stringResource(R.string.dp_value, draftValue.roundToInt()),
+        valueText = stringResource(
+            if (unitIsDp) R.string.dp_value else R.string.radial_ring_count_value,
+            draftValue.roundToInt().coerceIn(range),
+        ),
         enabled = enabled,
         startAction = { PreferenceIcon(icon, enabled) },
-        valueRange =
-            ModulePreferences.MIN_CORNER_TRIGGER_RANGE_DP.toFloat()..
-                ModulePreferences.MAX_CORNER_TRIGGER_RANGE_DP.toFloat(),
-        steps =
-            ModulePreferences.MAX_CORNER_TRIGGER_RANGE_DP -
-                ModulePreferences.MIN_CORNER_TRIGGER_RANGE_DP -
-                1,
+        valueRange = range.first.toFloat()..range.last.toFloat(),
+        steps = (range.last - range.first - 1).coerceAtLeast(0),
         onValueChangeFinished = {
             isDragging = false
             onPreviewChange(null)
             val committed =
-                ModulePreferences.coerceCornerTriggerRangeDp(draftValue.roundToInt())
+                draftValue.roundToInt().coerceIn(range)
             draftValue = committed.toFloat()
             if (committed != confirmedValue) onCommit(committed)
         },

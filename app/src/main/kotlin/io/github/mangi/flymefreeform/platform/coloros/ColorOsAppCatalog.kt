@@ -11,6 +11,8 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
 import io.github.mangi.flymefreeform.apps.AppSelectionPolicy
+import io.github.mangi.flymefreeform.config.screenShortEdgeDp
+import io.github.mangi.flymefreeform.gesture.RadialMenuGeometry
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import java.text.Collator
 import java.util.Locale
@@ -27,10 +29,13 @@ internal data class AppCatalogSnapshot(
     val radialApps: List<RadialAppEntry> = emptyList(),
     val panelApps: List<RadialAppEntry> = emptyList(),
     val settings: ModuleSettingsSnapshot = ModuleSettingsSnapshot(),
+    val shortEdgeDp: Int = 400,
 ) {
-    fun matches(settings: ModuleSettingsSnapshot): Boolean =
+    fun matches(settings: ModuleSettingsSnapshot, shortEdgeDp: Int = this.shortEdgeDp): Boolean =
+        this.shortEdgeDp == shortEdgeDp &&
         this.settings.pinsSaved == settings.pinsSaved &&
-            this.settings.pinnedComponents == settings.pinnedComponents
+            this.settings.pinnedComponents == settings.pinnedComponents &&
+            this.settings.radialMenu == settings.radialMenu
 }
 
 /** 目录查询只在后台执行；发布后的 Bitmap 与列表供手势热路径只读。 */
@@ -53,7 +58,9 @@ internal class ColorOsAppCatalog(
             val content =
                 if (cached != null && cached.revision == revision &&
                     cached.settings.pinsSaved == settings.pinsSaved &&
-                    cached.settings.pinnedComponents == settings.pinnedComponents
+                    cached.settings.pinnedComponents == settings.pinnedComponents &&
+                    cached.settings.radialMenu == settings.radialMenu &&
+                    cached.shortEdgeDp == screenShortEdgeDp(context)
                 ) {
                     cached
                 } else {
@@ -75,11 +82,12 @@ internal class ColorOsAppCatalog(
                 }
             }
             shapedRadial.forEach { it.icon.prepareToDraw() }
-            publish(AppCatalogSnapshot(shapedRadial, content.panelApps, settings))
+            publish(AppCatalogSnapshot(shapedRadial, content.panelApps, settings, content.shortEdgeDp))
         }
     }
 
     private fun loadContent(settings: ModuleSettingsSnapshot, revision: Long): CatalogContent? {
+        val shortEdgeDp = screenShortEdgeDp(context)
         val launcherApps = context.getSystemService(LauncherApps::class.java) ?: return null
         val user = Process.myUserHandle()
         val activities = launcherApps.getActivityList(null, user)
@@ -104,7 +112,7 @@ internal class ColorOsAppCatalog(
                 recent = recents,
                 all = alphabetical,
                 identity = RadialAppEntry::component,
-                limit = io.github.mangi.flymefreeform.config.ModulePreferences.MAX_PINNED_APPS,
+                limit = RadialMenuGeometry.calculate(settings.radialMenu, shortEdgeDp).pinnedCapacity,
             )
         val excluded = radial.mapTo(HashSet(), RadialAppEntry::component)
         val panel =
@@ -124,7 +132,7 @@ internal class ColorOsAppCatalog(
             }
         }.toMap()
         panel.forEach { it.icon.prepareToDraw() }
-        return CatalogContent(revision, settings, radial, panel, sources)
+        return CatalogContent(revision, settings, radial, panel, sources, shortEdgeDp)
     }
 
     private data class CatalogContent(
@@ -133,6 +141,7 @@ internal class ColorOsAppCatalog(
         val radialApps: List<RadialAppEntry>,
         val panelApps: List<RadialAppEntry>,
         val radialSources: Map<ComponentName, Drawable>,
+        val shortEdgeDp: Int,
     )
 
     private fun recentComponents(): List<ComponentName> {
