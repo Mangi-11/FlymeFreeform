@@ -2,7 +2,9 @@ package io.github.mangi.flymefreeform.platform.coloros
 
 import android.animation.Animator
 import android.content.Context
+import android.os.Build
 import android.os.IInterface
+import android.view.Menu
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
@@ -12,8 +14,9 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
-/** 仅适配已核对的 16.14.6：独立创建内容视图，不调用侧栏展开、点击全部或修改原生面板状态。 */
+/** 仅适配已核对的侧栏版本：独立创建内容视图，不修改原生面板状态。 */
 internal class ColorOsAllAppsContent(loader: ClassLoader) {
+    private val modernSidebar = Build.VERSION.SDK_INT == 37
     private val allClass = loader.loadClass(ALL_CLASS)
     private val searchClass = loader.loadClass(SEARCH_CLASS)
     private val mainClass = loader.loadClass(MAIN_CLASS)
@@ -43,23 +46,29 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
     private val getClick = adapterClass.getMethod("getOnItemClick")
     private val setClick = adapterClass.getMethod("setOnItemClick", getClick.returnType)
     private val invokeClick = getClick.returnType.getMethod("invoke", Any::class.java, Any::class.java)
-    private val nativeUnit = loader.loadClass("kotlin.t").getField("a").get(null)
+    private val nativeUnit = loader.loadClass(if (modernSidebar) "kotlin.q" else "kotlin.t").getField("a").get(null)
     private val cancelSearch = allClass.getMethod("cancelSearchEditing", Boolean::class.javaPrimitiveType)
-    private val enterSearch = searchClass.getMethod("getEnterSearchAnimatorSet")
-    private val exitSearch = searchClass.getMethod("getExitSearchAnimatorSet")
-    private val resourceClass = loader.loadClass("com.oplus.smartsidebar.utils.c0")
+    // 17.9.2 改用 COUISearchBar，不再暴露旧版的两个 AnimatorSet。
+    private val enterSearch = if (modernSidebar) null else searchClass.getMethod("getEnterSearchAnimatorSet")
+    private val exitSearch = if (modernSidebar) null else searchClass.getMethod("getExitSearchAnimatorSet")
+    private val resourceClass = loader.loadClass(
+        if (modernSidebar) "com.oplus.smartsidebar.utils.b0" else "com.oplus.smartsidebar.utils.c0",
+    )
     private val resource = resourceClass.getField("a").get(null)
     private val isLandscape = resource.javaClass.getMethod("k")
-    private val isPortrait = resource.javaClass.getMethod("s")
+    private val isPortrait = resource.javaClass.getMethod(
+        "s",
+    )
     private val isTabletop = resource.javaClass.getMethod("n", Boolean::class.javaPrimitiveType)
     private val gap = loader.loadClass("com.oplus.smartsidebar.panelview.edgepanel.utils.MainPanelSizeHelper").getMethod("getPanelGap")
-    private val blurClass = loader.loadClass("com.oplus.smartsidebar.utils.b")
-    private val supportsBlur = blurClass.getMethod("k")
-    private val makeBlur = blurClass.getMethod("q", View::class.java, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
-    private val updateBlur = blurClass.getMethod("s", View::class.java, makeBlur.returnType, Float::class.javaPrimitiveType)
-    private val shadowClass = loader.loadClass("com.oplus.smartsidebar.utils.g0")
-    private val setupShadow = shadowClass.getMethod("d", View::class.java)
-    private val updateShadow = shadowClass.getMethod("e", View::class.java, Float::class.javaPrimitiveType)
+    private val sidebarBlur = ColorOsSidebarBlur(loader)
+    private val shadowClass = loader.loadClass(
+        if (modernSidebar) "com.oplus.smartsidebar.utils.d0" else "com.oplus.smartsidebar.utils.g0",
+    )
+    private val setupShadow = shadowClass.getMethod(if (modernSidebar) "c" else "d", View::class.java)
+    private val updateShadow = shadowClass.getMethod(
+        if (modernSidebar) "d" else "e", View::class.java, Float::class.javaPrimitiveType,
+    )
 
     // Service 使用平台默认主题；原厂内容依赖 App 的配置/主题包装，不能直接传 Service。
     private val context = themedContext(loader)
@@ -69,7 +78,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
     val router = getRouter.call(search)!!
     private var closed = false
     private var loading = false
-    private var blur: Any? = null
+    private var blur: ColorOsSidebarBlur.Session? = null
     private var blurView: View? = null
     private var blurPrepared = false
     private var card: FrameLayout? = null
@@ -102,7 +111,15 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
 
     fun bindClose(action: () -> Unit) {
         if (closed) return
-        view.findViewById<View>(resourceId("close", "id"))?.setOnClickListener { action() }
+        if (modernSidebar) {
+            val toolbar = checkNotNull(view.findViewById<View>(resourceId("all_app_toolbar", "id")))
+            val menu = toolbar.javaClass.getMethod("getMenu").call(toolbar) as Menu
+            checkNotNull(menu.findItem(resourceId("cancel", "id")))
+                .setOnMenuItemClickListener { action(); true }
+        } else {
+            checkNotNull(view.findViewById<View>(resourceId("close", "id")))
+                .setOnClickListener { action() }
+        }
     }
 
     fun bindAdapter(adapter: Any, onClick: (Boolean, () -> Unit) -> Unit) {
@@ -168,7 +185,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
         if (blur != null) return true
         if (!blurPrepared) {
             blurPrepared = true
-            if (supportsBlur.call(null) != true) return true
+            if (!sidebarBlur.available) return true
             blurView = View(context).also { surface.addView(it, 0, FrameLayout.LayoutParams(-1, -1)) }
             return false
         }
@@ -176,22 +193,22 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
         if (!background.isLaidOut || background.isLayoutRequested ||
             background.width != surface.width || background.height != surface.height
         ) return false
-        val manager = makeBlur.call(null, background, false, false)
-        if (manager == null) {
+        val session = sidebarBlur.attach(background)
+        if (session == null) {
             surface.removeView(background)
             blurView = null
             return true
         }
         background.background?.setBounds(0, 0, background.width, background.height)
         cardClass.getMethod("setCardBackgroundColor", Int::class.javaPrimitiveType).call(surface, 0)
-        blur = manager
+        blur = session
         blurView = background
         updateBlur(1f)
         return true
     }
 
     fun updateBlur(alpha: Float) {
-        blurView?.let { updateBlur.call(null, it, blur, alpha) }
+        blur?.update(alpha)
         card?.let { updateShadow.call(null, it, alpha) }
     }
 
@@ -213,8 +230,8 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
         closed = true
         try {
             if (view.childCount > 0) {
-                (enterSearch.call(search) as? Animator)?.cancel()
-                (exitSearch.call(search) as? Animator)?.cancel()
+                (enterSearch?.call(search) as? Animator)?.cancel()
+                (exitSearch?.call(search) as? Animator)?.cancel()
             }
         } finally {
             try {
@@ -223,6 +240,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
                 loading = false
                 blurView?.background = null
                 blurView = null
+                blur?.close()
                 blur = null
                 card = null
             }

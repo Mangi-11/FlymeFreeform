@@ -19,6 +19,7 @@ import io.github.mangi.flymefreeform.gesture.CornerTriggerRegion
 import io.github.mangi.flymefreeform.gesture.GestureAction
 import io.github.mangi.flymefreeform.gesture.GesturePhase
 import java.lang.reflect.Field
+import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
 /** ColorOS Quickstep 输入入口；命中角落的指针流从 DOWN 起不再进入系统手势链。 */
@@ -38,22 +39,17 @@ internal class LauncherHookInstaller(
     private var suppressUntilTerminal = false
     private var pilfered = false
     private var inputMonitorField: Field? = null
-    private var forcePilferPointersMethod: Method? = null
+    private var pilferPointers: ((Any) -> Unit)? = null
     private var lastClaimLogAt = -CLAIM_LOG_INTERVAL_MS
     private var lastPilferFailureAt = -PILFER_FAILURE_LOG_INTERVAL_MS
 
     fun install(classLoader: ClassLoader) {
         try {
             val serviceClass = classLoader.loadClass(TOUCH_SERVICE_CLASS)
-            val inputMethod =
-                serviceClass.getDeclaredMethod(INPUT_METHOD_NAME, InputEvent::class.java).apply {
-                    isAccessible = true
-                }
-            val monitorClass = classLoader.loadClass(INPUT_MONITOR_CLASS)
-            inputMonitorField =
-                serviceClass.getDeclaredField(INPUT_MONITOR_FIELD).apply { isAccessible = true }
-            forcePilferPointersMethod =
-                monitorClass.getDeclaredMethod(FORCE_PILFER_METHOD).apply { isAccessible = true }
+            val inputMethod = resolveInputMethod(serviceClass)
+            val inputAccess = resolveInputMonitorAccess(serviceClass)
+            inputMonitorField = inputAccess.field
+            pilferPointers = inputAccess.pilfer
 
             module
                 .hook(inputMethod)
@@ -203,7 +199,7 @@ internal class LauncherHookInstaller(
     private fun forcePilferPointers(owner: Context) {
         try {
             val monitor = inputMonitorField?.get(owner) ?: return
-            forcePilferPointersMethod?.invoke(monitor)
+            pilferPointers?.invoke(monitor)
         } catch (exception: ReflectiveOperationException) {
             logPilferFailure(exception)
         } catch (exception: RuntimeException) {
@@ -229,10 +225,106 @@ internal class LauncherHookInstaller(
         const val TAG = "FlymeFreeform"
         const val TOUCH_SERVICE_CLASS = "com.android.quickstep.OplusBaseTouchInteractionService"
         const val INPUT_METHOD_NAME = "onInputEventInternal"
-        const val INPUT_MONITOR_CLASS = "com.android.systemui.shared.system.InputMonitorCompat"
+        const val COLOROS_17_INPUT_METHOD_NAME = "K"
         const val INPUT_MONITOR_FIELD = "mInputMonitorCompat"
+        const val COLOROS_17_INPUT_MONITOR_FIELD = "w"
         const val FORCE_PILFER_METHOD = "forcePilferPointers"
+        const val INPUT_MONITOR_DELEGATE_FIELD = "a"
+        const val INPUT_MONITOR_CLASS_NAME = "android.view.InputMonitor"
         const val CLAIM_LOG_INTERVAL_MS = 2_000L
         const val PILFER_FAILURE_LOG_INTERVAL_MS = 10_000L
     }
+
+    private data class InputMonitorAccess(
+        val field: Field,
+        val pilfer: (Any) -> Unit,
+    )
+
+    private fun resolveInputMethod(serviceClass: Class<*>): Method {
+        val named = listOf(INPUT_METHOD_NAME, COLOROS_17_INPUT_METHOD_NAME).mapNotNull { name ->
+            serviceClass.findDeclaredMethod(name, InputEvent::class.java)
+        }
+        if (named.size == 1) return named.single()
+        if (named.size > 1) throw NoSuchMethodException("Multiple input handlers on ${serviceClass.name}")
+
+        val bySignature = serviceClass.allDeclaredMethods().filter {
+            it.parameterTypes.contentEquals(arrayOf(InputEvent::class.java)) && it.returnType == Void.TYPE
+        }
+        return bySignature.singleOrNull()
+            ?: throw NoSuchMethodException("Unique InputEvent handler unavailable on ${serviceClass.name}")
+    }
+
+    private fun resolveInputMonitorAccess(serviceClass: Class<*>): InputMonitorAccess {
+        val ownerField = listOf(COLOROS_17_INPUT_MONITOR_FIELD, INPUT_MONITOR_FIELD)
+            .mapNotNull { serviceClass.findDeclaredField(it) }
+            .firstOrNull()
+            ?: throw NoSuchFieldException("Input monitor field unavailable on ${serviceClass.name}")
+        val wrapperClass = ownerField.type
+        val direct = wrapperClass.allDeclaredMethods().singleOrNull {
+            it.parameterCount == 0 && it.returnType == Void.TYPE &&
+                it.name in setOf(FORCE_PILFER_METHOD, "b")
+        }
+        if (direct != null) {
+            return InputMonitorAccess(ownerField) { wrapper ->
+                try {
+                    direct.invoke(wrapper)
+                } catch (exception: InvocationTargetException) {
+                    throw exception.targetException
+                }
+            }
+        }
+
+        val monitorFields = listOf(INPUT_MONITOR_DELEGATE_FIELD, "mInputMonitor")
+            .mapNotNull { wrapperClass.findDeclaredField(it) }
+            .filter { it.type.name == INPUT_MONITOR_CLASS_NAME }
+        val monitorField = monitorFields.singleOrNull()
+            ?: throw NoSuchFieldException("InputMonitor delegate unavailable on ${wrapperClass.name}")
+        val monitorClass = monitorField.type
+        val pilfer = monitorClass.getDeclaredMethod("pilferPointers").apply { isAccessible = true }
+        monitorField.isAccessible = true
+        return InputMonitorAccess(ownerField) { wrapper ->
+            val monitor = monitorField.get(wrapper)
+            if (monitor != null) {
+                try {
+                    pilfer.invoke(monitor)
+                } catch (exception: InvocationTargetException) {
+                    throw exception.targetException
+                }
+            }
+        }
+    }
+}
+
+private fun Class<*>.findDeclaredMethod(name: String, parameterType: Class<*>): Method? {
+    var current: Class<*>? = this
+    while (current != null) {
+        try {
+            return current.getDeclaredMethod(name, parameterType).apply { isAccessible = true }
+        } catch (_: NoSuchMethodException) {
+            current = current.superclass
+        }
+    }
+    return null
+}
+
+private fun Class<*>.findDeclaredField(name: String): Field? {
+    var current: Class<*>? = this
+    while (current != null) {
+        try {
+            return current.getDeclaredField(name).apply { isAccessible = true }
+        } catch (_: NoSuchFieldException) {
+            current = current.superclass
+        }
+    }
+    return null
+}
+
+private fun Class<*>.allDeclaredMethods(): List<Method> {
+    val methods = mutableListOf<Method>()
+    var current: Class<*>? = this
+    while (current != null) {
+        methods += current.declaredMethods
+        current = current.superclass
+    }
+    return methods
 }

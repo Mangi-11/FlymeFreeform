@@ -15,6 +15,7 @@ import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.gesture.OutsideTapGestureEngine
+import io.github.mangi.flymefreeform.platform.coloros.ColorOsDisplayContentImeAccess
 import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -148,7 +149,8 @@ internal class OutsideTapCloseHookInstaller(
         private val flexibleTasksField = controllerClass.requiredField("mFlexibleTasks")
         private val captionTaskField = captionClass.requiredField("mTask")
         private val captionControllerField = captionClass.requiredField("mFlexibleTaskController")
-        private val inputMethodWindowField = displayContentClass.requiredField("mInputMethodWindow")
+        private val inputMethodWindow =
+            ColorOsDisplayContentImeAccess(displayContentClass, windowStateClass)
         private val updateCaptionTouchRegion = captionClass.requiredMethod("updateTouchRegion", 0)
         private val getTopZoomTask = controllerClass.requiredMethod("getTopZoomTask", 0)
         private val isCanRespondEvent = controllerClass.requiredMethod("isCanRespondEvent", 0)
@@ -329,7 +331,7 @@ internal class OutsideTapCloseHookInstaller(
         }
 
         private fun visibleImeRegion(displayContent: Any): Region? {
-            val imeWindow = inputMethodWindowField.get(displayContent) ?: return null
+            val imeWindow = inputMethodWindow.get(displayContent) ?: return null
             if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return null
             return Region().also { getTouchableRegion.invokeUnwrapped(imeWindow, it) }
         }
@@ -522,7 +524,7 @@ internal class OutsideTapCloseHookInstaller(
         }
 
         private fun isInsideVisibleIme(displayContent: Any, x: Int, y: Int): Boolean {
-            val imeWindow = inputMethodWindowField.get(displayContent) ?: return false
+            val imeWindow = inputMethodWindow.get(displayContent) ?: return false
             if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return false
             val touchRegion = Region()
             getTouchableRegion.invokeUnwrapped(imeWindow, touchRegion)
