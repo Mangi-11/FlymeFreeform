@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation3.runtime)
     compileOnly(libs.libxposed.api)
+    implementation(libs.dexkit)
     implementation(libs.libxposed.service)
     implementation(libs.miuix.blur)
     implementation(libs.miuix.navigation3.ui)

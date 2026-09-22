@@ -80,7 +80,7 @@ class ModuleMain : XposedModule() {
 
             processName == PROCESS_LAUNCHER && param.packageName == PROCESS_LAUNCHER -> {
                 hooksInstalled = true
-                LauncherHookInstaller(this, settings).install(param.classLoader)
+                LauncherHookInstaller(this, settings).install(param.classLoader, param.applicationInfo)
             }
         }
     }

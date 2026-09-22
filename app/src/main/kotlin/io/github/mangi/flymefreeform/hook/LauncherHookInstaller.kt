@@ -2,12 +2,12 @@ package io.github.mangi.flymefreeform.hook
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
-import android.view.InputEvent
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import io.github.libxposed.api.XposedInterface
@@ -18,9 +18,13 @@ import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
 import io.github.mangi.flymefreeform.gesture.CornerTriggerRegion
 import io.github.mangi.flymefreeform.gesture.GestureAction
 import io.github.mangi.flymefreeform.gesture.GesturePhase
+import io.github.mangi.flymefreeform.platform.coloros.ColorOsLauncherInputTarget
+import java.io.File
+import java.io.IOException
 import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Method
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** ColorOS Quickstep 输入入口；命中角落的指针流从 DOWN 起不再进入系统手势链。 */
 @SuppressLint("DiscouragedPrivateApi", "PrivateApi")
@@ -43,16 +47,65 @@ internal class LauncherHookInstaller(
     private var lastClaimLogAt = -CLAIM_LOG_INTERVAL_MS
     private var lastPilferFailureAt = -PILFER_FAILURE_LOG_INTERVAL_MS
 
-    fun install(classLoader: ClassLoader) {
-        try {
-            val serviceClass = classLoader.loadClass(TOUCH_SERVICE_CLASS)
-            val inputMethod = resolveInputMethod(serviceClass)
-            val inputAccess = resolveInputMonitorAccess(serviceClass)
-            inputMonitorField = inputAccess.field
-            pilferPointers = inputAccess.pilfer
+    private val installationStarted = AtomicBoolean(false)
 
+    fun install(classLoader: ClassLoader, applicationInfo: ApplicationInfo) {
+        if (!installationStarted.compareAndSet(false, true)) return
+        val apk = File(applicationInfo.sourceDir)
+        val cache = File(applicationInfo.dataDir, "code_cache/flymefreeform/launcher-symbols")
+        val finished = AtomicBoolean(false)
+        val executor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "FlymeFreeform-LauncherDex").apply { isDaemon = true }
+        }
+        val timeout = Runnable {
+            if (finished.compareAndSet(false, true)) {
+                executor.shutdownNow()
+                module.log(Log.WARN, TAG, "LAUNCHER_DEX_RESOLUTION_TIMEOUT")
+            }
+        }
+        mainHandler.postDelayed(timeout, RESOLUTION_TIMEOUT_MS)
+        // 解析前的事件完整交给桌面；发布 Hook 后也只从下一次 DOWN 开始接管。
+        executor.execute {
+            try {
+                val target = ColorOsLauncherInputTarget.resolve(classLoader, apk, cache) { code, exception ->
+                    module.log(if (exception == null) Log.INFO else Log.WARN, TAG, code, exception)
+                }
+                mainHandler.post {
+                    if (finished.compareAndSet(false, true)) {
+                        mainHandler.removeCallbacks(timeout)
+                        installResolved(target)
+                    }
+                }
+            } catch (exception: ReflectiveOperationException) {
+                module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_UNAVAILABLE", exception)
+            } catch (exception: IOException) {
+                module.log(Log.WARN, TAG, "LAUNCHER_DEX_IO_FAILED", exception)
+            } catch (exception: RuntimeException) {
+                module.log(Log.WARN, TAG, "LAUNCHER_DEX_RESOLUTION_FAILED", exception)
+            } catch (exception: LinkageError) {
+                module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_LINKAGE_FAILED", exception)
+            } finally {
+                mainHandler.post {
+                    if (finished.compareAndSet(false, true)) mainHandler.removeCallbacks(timeout)
+                }
+            }
+        }
+        // 只有这一项任务；完成后线程退出，不保留后台线程池或重试循环。
+        executor.shutdown()
+    }
+
+    private fun installResolved(target: ColorOsLauncherInputTarget) {
+        try {
+            inputMonitorField = target.monitorField
+            pilferPointers = { wrapper ->
+                try {
+                    target.pilferMethod.invoke(wrapper)
+                } catch (exception: InvocationTargetException) {
+                    throw exception.targetException
+                }
+            }
             module
-                .hook(inputMethod)
+                .hook(target.inputMethod)
                 .setPriority(XposedInterface.PRIORITY_HIGHEST)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .setId("flymefreeform.launcher.corner_input_owner")
@@ -68,8 +121,8 @@ internal class LauncherHookInstaller(
                     }
                 }
             module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_HOOK_INSTALLED")
-        } catch (exception: ReflectiveOperationException) {
-            module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_UNAVAILABLE", exception)
+        } catch (exception: IllegalArgumentException) {
+            module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_HOOK_REJECTED", exception)
         } catch (exception: LinkageError) {
             module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_LINKAGE_FAILED", exception)
         }
@@ -223,108 +276,9 @@ internal class LauncherHookInstaller(
 
     private companion object {
         const val TAG = "FlymeFreeform"
-        const val TOUCH_SERVICE_CLASS = "com.android.quickstep.OplusBaseTouchInteractionService"
-        const val INPUT_METHOD_NAME = "onInputEventInternal"
-        const val COLOROS_17_INPUT_METHOD_NAME = "K"
-        const val INPUT_MONITOR_FIELD = "mInputMonitorCompat"
-        const val COLOROS_17_INPUT_MONITOR_FIELD = "w"
-        const val FORCE_PILFER_METHOD = "forcePilferPointers"
-        const val INPUT_MONITOR_DELEGATE_FIELD = "a"
-        const val INPUT_MONITOR_CLASS_NAME = "android.view.InputMonitor"
+        const val RESOLUTION_TIMEOUT_MS = 10_000L
         const val CLAIM_LOG_INTERVAL_MS = 2_000L
         const val PILFER_FAILURE_LOG_INTERVAL_MS = 10_000L
     }
 
-    private data class InputMonitorAccess(
-        val field: Field,
-        val pilfer: (Any) -> Unit,
-    )
-
-    private fun resolveInputMethod(serviceClass: Class<*>): Method {
-        val named = listOf(INPUT_METHOD_NAME, COLOROS_17_INPUT_METHOD_NAME).mapNotNull { name ->
-            serviceClass.findDeclaredMethod(name, InputEvent::class.java)
-        }
-        if (named.size == 1) return named.single()
-        if (named.size > 1) throw NoSuchMethodException("Multiple input handlers on ${serviceClass.name}")
-
-        val bySignature = serviceClass.allDeclaredMethods().filter {
-            it.parameterTypes.contentEquals(arrayOf(InputEvent::class.java)) && it.returnType == Void.TYPE
-        }
-        return bySignature.singleOrNull()
-            ?: throw NoSuchMethodException("Unique InputEvent handler unavailable on ${serviceClass.name}")
-    }
-
-    private fun resolveInputMonitorAccess(serviceClass: Class<*>): InputMonitorAccess {
-        val ownerField = listOf(COLOROS_17_INPUT_MONITOR_FIELD, INPUT_MONITOR_FIELD)
-            .mapNotNull { serviceClass.findDeclaredField(it) }
-            .firstOrNull()
-            ?: throw NoSuchFieldException("Input monitor field unavailable on ${serviceClass.name}")
-        val wrapperClass = ownerField.type
-        val direct = wrapperClass.allDeclaredMethods().singleOrNull {
-            it.parameterCount == 0 && it.returnType == Void.TYPE &&
-                it.name in setOf(FORCE_PILFER_METHOD, "b")
-        }
-        if (direct != null) {
-            return InputMonitorAccess(ownerField) { wrapper ->
-                try {
-                    direct.invoke(wrapper)
-                } catch (exception: InvocationTargetException) {
-                    throw exception.targetException
-                }
-            }
-        }
-
-        val monitorFields = listOf(INPUT_MONITOR_DELEGATE_FIELD, "mInputMonitor")
-            .mapNotNull { wrapperClass.findDeclaredField(it) }
-            .filter { it.type.name == INPUT_MONITOR_CLASS_NAME }
-        val monitorField = monitorFields.singleOrNull()
-            ?: throw NoSuchFieldException("InputMonitor delegate unavailable on ${wrapperClass.name}")
-        val monitorClass = monitorField.type
-        val pilfer = monitorClass.getDeclaredMethod("pilferPointers").apply { isAccessible = true }
-        monitorField.isAccessible = true
-        return InputMonitorAccess(ownerField) { wrapper ->
-            val monitor = monitorField.get(wrapper)
-            if (monitor != null) {
-                try {
-                    pilfer.invoke(monitor)
-                } catch (exception: InvocationTargetException) {
-                    throw exception.targetException
-                }
-            }
-        }
-    }
-}
-
-private fun Class<*>.findDeclaredMethod(name: String, parameterType: Class<*>): Method? {
-    var current: Class<*>? = this
-    while (current != null) {
-        try {
-            return current.getDeclaredMethod(name, parameterType).apply { isAccessible = true }
-        } catch (_: NoSuchMethodException) {
-            current = current.superclass
-        }
-    }
-    return null
-}
-
-private fun Class<*>.findDeclaredField(name: String): Field? {
-    var current: Class<*>? = this
-    while (current != null) {
-        try {
-            return current.getDeclaredField(name).apply { isAccessible = true }
-        } catch (_: NoSuchFieldException) {
-            current = current.superclass
-        }
-    }
-    return null
-}
-
-private fun Class<*>.allDeclaredMethods(): List<Method> {
-    val methods = mutableListOf<Method>()
-    var current: Class<*>? = this
-    while (current != null) {
-        methods += current.declaredMethods
-        current = current.superclass
-    }
-    return methods
 }
