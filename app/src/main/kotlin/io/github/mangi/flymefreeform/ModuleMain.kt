@@ -70,7 +70,7 @@ class ModuleMain : XposedModule() {
         when {
             processName == ColorOsSidebarTarget.PROCESS_NAME && param.packageName == ColorOsSidebarTarget.PACKAGE_NAME -> {
                 hooksInstalled = true
-                SidebarHookInstaller(this, settings).install(param.classLoader)
+                SidebarHookInstaller(this, settings).install(param.classLoader, param.applicationInfo)
             }
 
             processName == PROCESS_SYSTEM_UI && param.packageName == PROCESS_SYSTEM_UI -> {

@@ -2,6 +2,9 @@ package io.github.mangi.flymefreeform.hook
 
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.os.Handler
+import android.os.Looper
 import android.os.IBinder
 import android.os.Process
 import android.util.Log
@@ -12,13 +15,21 @@ import io.github.mangi.flymefreeform.platform.coloros.ColorOsAllAppsEndpoint
 import io.github.mangi.flymefreeform.platform.coloros.ColorOsSidebarEntryEndpoint
 import io.github.mangi.flymefreeform.platform.coloros.ColorOsSidebarTarget
 import io.github.mangi.flymefreeform.platform.coloros.SidebarEntryProtocol
+import io.github.mangi.flymefreeform.platform.coloros.ColorOsSidebarVisualTarget
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** 只注入侧边栏 UI 进程；服务方法照常执行一次，应用/工具的启动仍交给原厂路由。 */
 internal class SidebarHookInstaller(private val module: XposedModule, private val configuration: ProcessConfiguration) {
     private var entryEndpoint: ColorOsSidebarEntryEndpoint? = null
     private var endpoint: ColorOsAllAppsEndpoint? = null
 
-    fun install(loader: ClassLoader) {
+    private var visualTarget: ColorOsSidebarVisualTarget? = null
+    private val resolutionStarted = AtomicBoolean(false)
+
+    fun install(loader: ClassLoader, applicationInfo: ApplicationInfo) {
         val handles = mutableListOf<XposedInterface.HookHandle>()
         try {
             val serviceClass = loader.loadClass(ColorOsSidebarTarget.SERVICE_CLASS)
@@ -40,7 +51,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                     val intent = chain.getArg(0) as? Intent
                     if (service != null && intent?.action == ColorOsSidebarTarget.BIND_ACTION) {
                         if (endpoint == null && ColorOsSidebarTarget.supportedUid(service) == Process.myUid()) {
-                            endpoint = ColorOsAllAppsEndpoint(service, loader, configuration, ::log)
+                            endpoint = ColorOsAllAppsEndpoint(service, loader, configuration, { visualTarget }, ::log)
                         }
                         endpoint?.takeIf { it.service === service }?.binder ?: original
                     } else if (service != null && intent?.action == SidebarEntryProtocol.BIND_ACTION) {
@@ -85,6 +96,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                     original
                 }
             log(Log.INFO, "ALL_APPS_BRIDGE_INSTALLED", null)
+            resolveVisualTarget(loader, applicationInfo)
         } catch (exception: ReflectiveOperationException) {
             handles.forEach { it.unhook() }
             log(Log.WARN, "ALL_APPS_SIGNATURE_UNAVAILABLE", exception)
@@ -95,6 +107,48 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             handles.forEach { it.unhook() }
             log(Log.WARN, "ALL_APPS_LINKAGE_FAILED", error)
         }
+    }
+
+    private fun resolveVisualTarget(loader: ClassLoader, info: ApplicationInfo) {
+        if (!resolutionStarted.compareAndSet(false, true)) return
+        val handler = Handler(Looper.getMainLooper())
+        val finished = AtomicBoolean(false)
+        val executor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "FlymeFreeform-SidebarDex").apply { isDaemon = true }
+        }
+        val timeout = Runnable {
+            if (finished.compareAndSet(false, true)) {
+                executor.shutdownNow()
+                log(Log.WARN, "SIDEBAR_DEX_RESOLUTION_TIMEOUT", null)
+            }
+        }
+        handler.postDelayed(timeout, 10_000L)
+        executor.execute {
+            try {
+                val target = ColorOsSidebarVisualTarget.resolve(
+                    loader, File(info.sourceDir), File(info.dataDir, "code_cache/flymefreeform/sidebar-symbols"),
+                ) { code, exception -> log(if (exception == null) Log.INFO else Log.WARN, code, exception) }
+                handler.post {
+                    if (finished.compareAndSet(false, true)) {
+                        handler.removeCallbacks(timeout)
+                        visualTarget = target
+                    }
+                }
+            } catch (exception: ReflectiveOperationException) {
+                log(Log.WARN, "SIDEBAR_DEX_TARGET_UNAVAILABLE", exception)
+            } catch (exception: IOException) {
+                log(Log.WARN, "SIDEBAR_DEX_IO_FAILED", exception)
+            } catch (exception: RuntimeException) {
+                log(Log.WARN, "SIDEBAR_DEX_RESOLUTION_FAILED", exception)
+            } catch (error: LinkageError) {
+                log(Log.WARN, "SIDEBAR_DEX_LINKAGE_FAILED", error)
+            } finally {
+                handler.post {
+                    if (finished.compareAndSet(false, true)) handler.removeCallbacks(timeout)
+                }
+            }
+        }
+        executor.shutdown()
     }
 
     private fun log(priority: Int, code: String, throwable: Throwable?) = module.log(priority, "FlymeFreeform", code, throwable)

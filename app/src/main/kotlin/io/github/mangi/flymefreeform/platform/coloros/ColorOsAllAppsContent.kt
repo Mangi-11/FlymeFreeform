@@ -2,7 +2,6 @@ package io.github.mangi.flymefreeform.platform.coloros
 
 import android.animation.Animator
 import android.content.Context
-import android.os.Build
 import android.os.IInterface
 import android.view.Menu
 import android.util.TypedValue
@@ -15,8 +14,7 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
 /** 仅适配已核对的侧栏版本：独立创建内容视图，不修改原生面板状态。 */
-internal class ColorOsAllAppsContent(loader: ClassLoader) {
-    private val modernSidebar = Build.VERSION.SDK_INT == 37
+internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebarVisualTarget) {
     private val allClass = loader.loadClass(ALL_CLASS)
     private val searchClass = loader.loadClass(SEARCH_CLASS)
     private val mainClass = loader.loadClass(MAIN_CLASS)
@@ -46,29 +44,18 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
     private val getClick = adapterClass.getMethod("getOnItemClick")
     private val setClick = adapterClass.getMethod("setOnItemClick", getClick.returnType)
     private val invokeClick = getClick.returnType.getMethod("invoke", Any::class.java, Any::class.java)
-    private val nativeUnit = loader.loadClass(if (modernSidebar) "kotlin.q" else "kotlin.t").getField("a").get(null)
+    private val nativeUnit = checkNotNull(target.unit.get(null))
     private val cancelSearch = allClass.getMethod("cancelSearchEditing", Boolean::class.javaPrimitiveType)
-    // 17.9.2 改用 COUISearchBar，不再暴露旧版的两个 AnimatorSet。
-    private val enterSearch = if (modernSidebar) null else searchClass.getMethod("getEnterSearchAnimatorSet")
-    private val exitSearch = if (modernSidebar) null else searchClass.getMethod("getExitSearchAnimatorSet")
-    private val resourceClass = loader.loadClass(
-        if (modernSidebar) "com.oplus.smartsidebar.utils.b0" else "com.oplus.smartsidebar.utils.c0",
-    )
-    private val resource = resourceClass.getField("a").get(null)
-    private val isLandscape = resource.javaClass.getMethod("k")
-    private val isPortrait = resource.javaClass.getMethod(
-        "s",
-    )
-    private val isTabletop = resource.javaClass.getMethod("n", Boolean::class.javaPrimitiveType)
+    private val enterSearch = optionalAnimator("getEnterSearchAnimatorSet")
+    private val exitSearch = optionalAnimator("getExitSearchAnimatorSet")
+    private val resource = checkNotNull(target.resource.get(null))
+    private val isLandscape = target.landscape
+    private val isPortrait = target.portrait
+    private val isTabletop = target.hover
     private val gap = loader.loadClass("com.oplus.smartsidebar.panelview.edgepanel.utils.MainPanelSizeHelper").getMethod("getPanelGap")
-    private val sidebarBlur = ColorOsSidebarBlur(loader)
-    private val shadowClass = loader.loadClass(
-        if (modernSidebar) "com.oplus.smartsidebar.utils.d0" else "com.oplus.smartsidebar.utils.g0",
-    )
-    private val setupShadow = shadowClass.getMethod(if (modernSidebar) "c" else "d", View::class.java)
-    private val updateShadow = shadowClass.getMethod(
-        if (modernSidebar) "d" else "e", View::class.java, Float::class.javaPrimitiveType,
-    )
+    private val sidebarBlur = ColorOsSidebarBlur(target.blur)
+    private val setupShadow = target.shadowSetup
+    private val updateShadow = target.shadowUpdate
 
     // Service 使用平台默认主题；原厂内容依赖 App 的配置/主题包装，不能直接传 Service。
     private val context = themedContext(loader)
@@ -109,17 +96,28 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
         load.call(search)
     }
 
+    @Suppress("DiscouragedApi")
     fun bindClose(action: () -> Unit) {
         if (closed) return
-        if (modernSidebar) {
-            val toolbar = checkNotNull(view.findViewById<View>(resourceId("all_app_toolbar", "id")))
-            val menu = toolbar.javaClass.getMethod("getMenu").call(toolbar) as Menu
-            checkNotNull(menu.findItem(resourceId("cancel", "id")))
-                .setOnMenuItemClickListener { action(); true }
-        } else {
-            checkNotNull(view.findViewById<View>(resourceId("close", "id")))
-                .setOnClickListener { action() }
+        val toolbarId = context.resources.getIdentifier("all_app_toolbar", "id", ColorOsSidebarTarget.PACKAGE_NAME)
+        val closeId = context.resources.getIdentifier("close", "id", ColorOsSidebarTarget.PACKAGE_NAME)
+        val toolbar = if (toolbarId == 0) null else view.findViewById<View>(toolbarId)
+        val close = if (closeId == 0) null else view.findViewById<View>(closeId)
+        when {
+            toolbar != null -> {
+                val menu = toolbar.javaClass.getMethod("getMenu").call(toolbar) as Menu
+                checkNotNull(menu.findItem(resourceId("cancel", "id")))
+                    .setOnMenuItemClickListener { action(); true }
+            }
+            close != null -> close.setOnClickListener { action() }
+            else -> throw IllegalStateException("SIDEBAR_CLOSE_CONTROL_UNAVAILABLE")
         }
+    }
+
+    private fun optionalAnimator(name: String): Method? = try {
+        searchClass.getMethod(name).also { require(Animator::class.java.isAssignableFrom(it.returnType)) }
+    } catch (_: NoSuchMethodException) {
+        null
     }
 
     fun bindAdapter(adapter: Any, onClick: (Boolean, () -> Unit) -> Unit) {
@@ -240,7 +238,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader) {
                 loading = false
                 blurView?.background = null
                 blurView = null
-                blur?.close()
+                sidebarBlur.close()
                 blur = null
                 card = null
             }

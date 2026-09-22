@@ -2,24 +2,10 @@ package io.github.mangi.flymefreeform.platform.coloros
 
 import java.io.File
 import java.io.IOException
-import java.io.InterruptedIOException
-import java.security.MessageDigest
 
 /** 缓存仅包含符号；绑定 APK 内容与查询规则，不跨 APK 更新复用。调用方在后台执行 I/O。 */
 internal object LauncherSymbolCache {
-    fun identity(apk: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        apk.inputStream().buffered().use { stream ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                if (Thread.currentThread().isInterrupted) throw InterruptedIOException("LAUNCHER_DEX_CANCELLED")
-                val size = stream.read(buffer)
-                if (size < 0) break
-                digest.update(buffer, 0, size)
-            }
-        }
-        return LauncherDexQuery.RULE_VERSION + ":" + digest.digest().joinToString("") { "%02x".format(it) }
-    }
+    fun identity(apk: File): String = DexApkIdentity.compute(apk, LauncherDexQuery.RULE_VERSION)
 
     fun read(file: File, identity: String): LauncherDexQuery.Symbols? {
         if (!file.isFile || file.length() > 4096) return null

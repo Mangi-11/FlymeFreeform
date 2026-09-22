@@ -29,6 +29,7 @@ internal class ColorOsAllAppsEndpoint(
     val service: Service,
     private val loader: ClassLoader,
     private val configuration: ProcessConfiguration,
+    private val visualTarget: () -> ColorOsSidebarVisualTarget?,
     private val log: (Int, String, Throwable?) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
@@ -194,7 +195,8 @@ internal class ColorOsAllAppsEndpoint(
     }
 
     private fun prepare(id: String, deadline: Long, reply: Messenger) {
-        if (request != null || !environmentAllowed() || !SidebarProtocol.isValidDeadline(deadline, SystemClock.uptimeMillis(), SidebarProtocol.PREPARE_TIMEOUT_MS)) {
+        val target = visualTarget()
+        if (target == null || request != null || !environmentAllowed() || !SidebarProtocol.isValidDeadline(deadline, SystemClock.uptimeMillis(), SidebarProtocol.PREPARE_TIMEOUT_MS)) {
             send(reply, id, SidebarProtocol.ABORTED)
             return
         }
@@ -216,7 +218,7 @@ internal class ColorOsAllAppsEndpoint(
         watchingPackages = true
         service.registerComponentCallbacks(components)
         watchingConfiguration = true
-        next.content = ColorOsAllAppsContent(loader)
+        next.content = ColorOsAllAppsContent(loader, target)
         advance()
     }
 

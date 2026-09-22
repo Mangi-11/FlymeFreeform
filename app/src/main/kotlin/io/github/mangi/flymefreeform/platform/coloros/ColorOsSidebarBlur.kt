@@ -9,10 +9,15 @@ import java.lang.reflect.Method
  * ColorOS 17 将静态工具调用改为实例管理器。
  */
 internal class ColorOsSidebarBlur(
-    loader: ClassLoader,
+    target: ColorOsSidebarVisualTarget.Blur?,
 ) {
-    private val legacy = LegacyBlur.tryCreate(loader)
-    private val platform = PlatformBlur.tryCreate(loader)
+    private val legacy = if (target == null || target.platform) null else LegacyBlur(
+        checkNotNull(target.supports), target.attach, target.update,
+    )
+    private val platform = if (target == null || !target.platform) null else PlatformBlur(
+        target.attach.declaringClass.getDeclaredConstructor().apply { isAccessible = true }.newInstance(),
+        target.attach, target.update, checkNotNull(target.close),
+    )
 
     val available: Boolean
         get() = legacy != null || platform != null
@@ -20,6 +25,8 @@ internal class ColorOsSidebarBlur(
     fun attach(view: View): Session? =
         platform?.attach(view)?.let { PlatformSession(it) }
             ?: legacy?.attach(view)?.let { LegacySession(legacy, view, it) }
+
+    fun close() { platform?.close() }
 
     internal interface Session {
         fun update(alpha: Float)
@@ -51,40 +58,27 @@ internal class ColorOsSidebarBlur(
         private val updateMethod: Method,
         private val closeMethod: Method,
     ) {
-        fun attach(view: View): PlatformBlur? =
-            if (attachMethod.invokeUnwrapped(instance, view, true, true) == true) this else null
+        private var attached = false
+
+        fun attach(view: View): PlatformBlur? {
+            attached = true
+            var success = false
+            try {
+                success = attachMethod.invokeUnwrapped(instance, view, true, true) == true
+                return if (success) this else null
+            } finally {
+                if (!success) close()
+            }
+        }
 
         fun update(alpha: Float) {
             updateMethod.invokeUnwrapped(instance, alpha)
         }
 
         fun close() {
+            if (!attached) return
+            attached = false
             closeMethod.invokeUnwrapped(instance)
-        }
-
-        companion object {
-            fun tryCreate(loader: ClassLoader): PlatformBlur? =
-                try {
-                    val type = loader.loadClass(PLATFORM_CLASS_NAME)
-                    val instance = type.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-                    PlatformBlur(
-                        instance = instance,
-                        attachMethod = type.getDeclaredMethod(
-                            "r",
-                            View::class.java,
-                            Boolean::class.javaPrimitiveType,
-                            Boolean::class.javaPrimitiveType,
-                        ).apply { isAccessible = true },
-                        updateMethod = type.getDeclaredMethod("S", Float::class.javaPrimitiveType).apply {
-                            isAccessible = true
-                        },
-                        closeMethod = type.getDeclaredMethod("H").apply { isAccessible = true },
-                    )
-                } catch (_: ClassNotFoundException) {
-                    null
-                } catch (_: ReflectiveOperationException) {
-                    null
-                }
         }
     }
 
@@ -101,37 +95,6 @@ internal class ColorOsSidebarBlur(
         fun update(view: View, manager: Any, alpha: Float) {
             updateMethod.invokeUnwrapped(null, view, manager, alpha)
         }
-
-        companion object {
-            fun tryCreate(loader: ClassLoader): LegacyBlur? =
-                try {
-                    val type = loader.loadClass(LEGACY_CLASS_NAME)
-                    val supports = type.getDeclaredMethod("k").apply { isAccessible = true }
-                    val create = type.getDeclaredMethod(
-                        "q",
-                        View::class.java,
-                        Boolean::class.javaPrimitiveType,
-                        Boolean::class.javaPrimitiveType,
-                    ).apply { isAccessible = true }
-                    val update = type.getDeclaredMethod(
-                        "s",
-                        View::class.java,
-                        create.returnType,
-                        Float::class.javaPrimitiveType,
-                    ).apply { isAccessible = true }
-                    LegacyBlur(supports, create, update)
-                } catch (_: ClassNotFoundException) {
-                    null
-                } catch (_: ReflectiveOperationException) {
-                    null
-                }
-        }
-    }
-
-    private companion object {
-        const val PLATFORM_CLASS_NAME =
-            "com.oplus.smartsidebar.utils.SidebarPlatformBlurHelper"
-        const val LEGACY_CLASS_NAME = "com.oplus.smartsidebar.utils.b"
     }
 }
 

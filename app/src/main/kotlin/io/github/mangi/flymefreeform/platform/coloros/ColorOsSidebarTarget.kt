@@ -4,9 +4,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.os.Build
 
-/** 仅启用已核对的系统包；包名相同或方法名相似不足以证明兼容。 */
+/** 校验系统包身份与组件权限；功能兼容性由宿主接口和 DexKit 查询另行确认。 */
 internal object ColorOsSidebarTarget {
     const val PACKAGE_NAME = "com.coloros.smartsidebar"
     const val PROCESS_NAME = "$PACKAGE_NAME:ui"
@@ -17,15 +16,8 @@ internal object ColorOsSidebarTarget {
     const val PREPARE_METHOD = "bindServiceForTransferDock"
 
     fun supportedUid(context: Context): Int? {
-        val profile = when (Build.VERSION.SDK_INT) {
-            37 -> VersionProfile(170009002L, "17.9.2")
-            36 -> VersionProfile(160014006L, "16.14.6")
-            else -> return null
-        }
         val manager = context.packageManager
         return try {
-            val info = manager.getPackageInfo(PACKAGE_NAME, PackageManager.PackageInfoFlags.of(0))
-            if (info.longVersionCode != profile.versionCode || info.versionName != profile.versionName) return null
             val service =
                 manager.getServiceInfo(
                     ComponentName(PACKAGE_NAME, SERVICE_CLASS),
@@ -54,9 +46,4 @@ internal object ColorOsSidebarTarget {
             null
         }
     }
-
-    private data class VersionProfile(
-        val versionCode: Long,
-        val versionName: String,
-    )
 }

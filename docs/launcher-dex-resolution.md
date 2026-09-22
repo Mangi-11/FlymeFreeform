@@ -1,6 +1,6 @@
 # 桌面输入目标解析
 
-桌面进程使用 DexKit 2.2.0 解析输入处理方法及指针抢占包装方法，libxposed API 102 负责安装 Hook。其他进程的定位保持原有适配方式。
+桌面进程使用 DexKit 2.2.0 解析输入处理方法及指针抢占包装方法，libxposed API 102 负责安装 Hook。侧边栏的独立适配见 [侧边栏适配与能力校验](sidebar-dex-resolution.md)。
 
 ## 匹配条件
 
