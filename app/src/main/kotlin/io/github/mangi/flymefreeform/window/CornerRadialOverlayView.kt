@@ -15,6 +15,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -23,13 +24,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -42,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -62,6 +67,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -76,6 +82,7 @@ import io.github.mangi.flymefreeform.gesture.RadialGeometry
 import io.github.mangi.flymefreeform.gesture.RadialLayout
 import io.github.mangi.flymefreeform.platform.coloros.AppCatalogSnapshot
 import io.github.mangi.flymefreeform.platform.coloros.RadialAppEntry
+import io.github.mangi.flymefreeform.platform.coloros.AppShortcut
 import io.github.mangi.flymefreeform.ui.theme.CornerOverlayTheme
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -86,6 +93,7 @@ import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
+import kotlin.math.hypot
 
 @SuppressLint("ViewConstructor")
 internal class CornerRadialOverlayView(
@@ -94,6 +102,10 @@ internal class CornerRadialOverlayView(
 ) : AbstractComposeView(context), LifecycleOwner, SavedStateRegistryOwner {
     interface Listener {
         fun onAppCommitted(entry: RadialAppEntry)
+
+        fun onShortcutCommitted(shortcut: AppShortcut)
+
+        fun onShortcutsRequested(entry: RadialAppEntry, onResult: (List<AppShortcut>) -> Unit)
 
         fun onMorePanelRequested()
 
@@ -107,6 +119,8 @@ internal class CornerRadialOverlayView(
     private val metricsState = mutableStateOf<AdaptiveOverlayMetrics?>(null)
     private val layoutState = mutableStateOf(EMPTY_LAYOUT)
     private val selectedIndexState = mutableIntStateOf(NO_SELECTION)
+    private val shortcutMenuState = mutableStateOf<ShortcutMenu?>(null)
+    private val shortcutRowState = mutableIntStateOf(NO_SELECTION)
     private val panelModeState = mutableStateOf(false)
     private val backdropOnlyState = mutableStateOf(false)
     private val backdropAlpha = mutableFloatStateOf(1f)
@@ -130,7 +144,10 @@ internal class CornerRadialOverlayView(
     private var disposed = false
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
+    private val hoverTimeout = Runnable(::showShortcutsForSelection)
     private val dismissFallback = Runnable(::completeRadialExit)
+    private var pendingShortcut: AppShortcut? = null
+    private var selectionRevision = 0L
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -170,6 +187,10 @@ internal class CornerRadialOverlayView(
         panelImages = catalog.panelApps.associate { entry -> entry.component to entry.icon.asImageBitmap() }
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
+        shortcutMenuState.value = null
+        shortcutRowState.intValue = NO_SELECTION
+        pendingShortcut = null
+        selectionRevision++
         handoffEntryProgress.floatValue = 0f
         handoffLayoutState.value = EMPTY_LAYOUT
         handoffMetricsState.value = null
@@ -193,11 +214,38 @@ internal class CornerRadialOverlayView(
         if (panelModeState.value || dismissing) return selectedIndex
         removeCallbacks(timeout)
         postDelayed(timeout, GESTURE_TIMEOUT_MS)
+        val menu = shortcutMenuState.value
+        if (menu != null) {
+            val row = menu.bounds.rowAt(x, y)
+            shortcutRowState.intValue = row ?: NO_SELECTION
+            if (row != null) return selectedIndex
+            val icon = layoutState.value.itemCenters.getOrNull(menu.index)
+            if (icon != null && x >= minOf(icon.x, menu.bounds.left) && x <= maxOf(icon.x, menu.bounds.right) &&
+                y >= minOf(icon.y, menu.bounds.top) && y <= maxOf(icon.y, menu.bounds.bottom)) return selectedIndex
+            val next = radialSelection(x, y)
+            if (next == null || next == menu.index) return selectedIndex
+            shortcutMenuState.value = null
+        }
         updateGestureFromLatestPoint()
         return selectedIndex
     }
 
     fun finishGesture() {
+        val menu = shortcutMenuState.value
+        if (menu != null) {
+            val shortcut = menu.bounds.rowAt(latestX, latestY)?.let(menu.shortcuts::getOrNull)
+            if (shortcut != null) {
+                pendingShortcut = shortcut
+                dismissAnimated()
+            } else {
+                val icon = layoutState.value.itemCenters.getOrNull(menu.index)
+                if (icon != null && hypot(latestX - icon.x, latestY - icon.y) <=
+                    (metricsState.value?.radial?.selectionKeepRadius ?: 0f)) {
+                    dismissAnimated(catalog.radialApps[menu.index])
+                } else dismissAnimated()
+            }
+            return
+        }
         val selection = selectedIndex
         when {
             selection == null -> dismissAnimated()
@@ -218,6 +266,7 @@ internal class CornerRadialOverlayView(
         backdropAnimator?.cancel()
         backdropAnimator = null
         removeCallbacks(timeout)
+        removeCallbacks(hoverTimeout)
         removeCallbacks(dismissFallback)
         var failure: Throwable? = null
         try {
@@ -387,6 +436,9 @@ internal class CornerRadialOverlayView(
                 itemRings = itemRings,
                 animationsEnabled = animationsEnabled,
             )
+            if (!panelModeState.value && exitRequest == null) {
+                shortcutMenuState.value?.let { menu -> ShortcutMenuContent(menu) }
+            }
             if (panelModeState.value) {
                 Box(
                     modifier =
@@ -406,6 +458,47 @@ internal class CornerRadialOverlayView(
                     inputEnabled = panelInputEnabled.value,
                     animationsEnabled = animationsEnabled,
                 )
+            }
+        }
+    }
+
+    @Composable
+    private fun ShortcutMenuContent(menu: ShortcutMenu) {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val bounds = menu.bounds
+        Column(
+            modifier = Modifier
+                .absoluteOffset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
+                .requiredSize(
+                    with(density) { bounds.width.toDp() },
+                    with(density) { bounds.bottom.minus(bounds.top).toDp() },
+                )
+                .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.97f), RoundedCornerShape(8.dp)),
+        ) {
+            menu.shortcuts.forEachIndexed { index, shortcut ->
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                        .height(with(density) { bounds.rowHeight.toDp() })
+                        .background(if (shortcutRowState.intValue == index) Color.White.copy(alpha = 0.18f) else Color.Transparent)
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val icon = remember(shortcut.icon) { shortcut.icon?.asImageBitmap() }
+                            ?: radialImages.value.getOrNull(menu.index)
+                        if (icon != null) {
+                            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+                        Text(
+                            text = shortcut.label,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
     }
@@ -788,22 +881,52 @@ internal class CornerRadialOverlayView(
         val metrics = metricsState.value ?: return
         val layout = layoutState.value
         if (layout.itemCenters.isEmpty()) return
-        val next =
-            RadialGeometry.selection(
-                layout = layout,
-                x = latestX,
-                y = latestY,
-                previous = selectedIndex,
-                enterRadius = metrics.radial.selectionEnterRadius,
-                keepRadius = metrics.radial.selectionKeepRadius,
-            )
+        val next = radialSelection(latestX, latestY)
         if (next == selectedIndex) return
+        removeCallbacks(hoverTimeout)
+        shortcutMenuState.value = null
+        shortcutRowState.intValue = NO_SELECTION
         selectedIndex = next
+        selectionRevision++
         selectedIndexState.intValue = next ?: NO_SELECTION
+        if (next != null && next < catalog.radialApps.size) postDelayed(hoverTimeout, SHORTCUT_HOVER_MS)
         val now = SystemClock.uptimeMillis()
         if (next != null && now - lastTickUptime >= TICK_INTERVAL_MS) {
             performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             lastTickUptime = now
+        }
+    }
+
+    private fun radialSelection(x: Float, y: Float): Int? {
+        val metrics = metricsState.value ?: return null
+        return RadialGeometry.selection(
+            layout = layoutState.value,
+            x = x,
+            y = y,
+            previous = selectedIndex,
+            enterRadius = metrics.radial.selectionEnterRadius,
+            keepRadius = metrics.radial.selectionKeepRadius,
+        )
+    }
+
+    private fun showShortcutsForSelection() {
+        val index = selectedIndex ?: return
+        val entry = catalog.radialApps.getOrNull(index) ?: return
+        val revision = selectionRevision
+        if (disposed || dismissing || panelModeState.value) return
+        listener.onShortcutsRequested(entry) { shortcuts ->
+            if (shortcuts.isEmpty() || disposed || dismissing || panelModeState.value || selectedIndex != index || selectionRevision != revision ||
+                catalog.radialApps.getOrNull(index)?.component != entry.component) return@onShortcutsRequested
+            val metrics = metricsState.value ?: return@onShortcutsRequested
+            val icon = layoutState.value.itemCenters.getOrNull(index) ?: return@onShortcutsRequested
+            if (hypot(latestX - icon.x, latestY - icon.y) > metrics.radial.selectionKeepRadius) return@onShortcutsRequested
+            shortcutMenuState.value = ShortcutMenu(
+                index,
+                shortcuts,
+                ShortcutMenuGeometry.place(icon, side, width.toFloat(), height.toFloat(),
+                    resources.displayMetrics.density, shortcuts.size, metrics.radial.iconDiameter),
+            )
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         }
     }
 
@@ -814,6 +937,8 @@ internal class CornerRadialOverlayView(
         handoffLayoutState.value = layoutState.value
         handoffMetricsState.value = metricsState.value?.radial
         removeCallbacks(timeout)
+        removeCallbacks(hoverTimeout)
+        shortcutMenuState.value = null
         listener.onMorePanelRequested()
     }
 
@@ -873,6 +998,7 @@ internal class CornerRadialOverlayView(
         if (dismissing || disposed) return
         dismissing = true
         removeCallbacks(timeout)
+        removeCallbacks(hoverTimeout)
         exitRequestState.value = ExitRequest(pendingCommit, entryProgress.value)
         removeCallbacks(dismissFallback)
         if (!ValueAnimator.areAnimatorsEnabled()) {
@@ -891,8 +1017,13 @@ internal class CornerRadialOverlayView(
         if (dismissNotified || disposed) return
         removeCallbacks(dismissFallback)
         val pendingCommit = exitRequestState.value?.pendingCommit
+        val shortcut = pendingShortcut
+        pendingShortcut = null
         exitRequestState.value = null
-        if (pendingCommit == null) {
+        if (shortcut != null) {
+            dismissNotified = true
+            listener.onShortcutCommitted(shortcut)
+        } else if (pendingCommit == null) {
             requestDismiss()
         } else {
             dismissNotified = true
@@ -980,6 +1111,7 @@ internal class CornerRadialOverlayView(
         }
 
     private data class ExitRequest(val pendingCommit: RadialAppEntry?, val entryProgress: Float)
+    private data class ShortcutMenu(val index: Int, val shortcuts: List<AppShortcut>, val bounds: ShortcutMenuBounds)
 
     private companion object {
         val EMPTY_LAYOUT =
@@ -1002,6 +1134,7 @@ internal class CornerRadialOverlayView(
         const val PANEL_CONTENT_TRANSLATION_FRACTION = 0.12f
         const val TICK_INTERVAL_MS = 80L
         const val GESTURE_TIMEOUT_MS = 5_000L
+        const val SHORTCUT_HOVER_MS = 550L
         const val PANEL_TIMEOUT_MS = 15_000L
         const val DISMISS_FALLBACK_GRACE_MS = 260L
     }

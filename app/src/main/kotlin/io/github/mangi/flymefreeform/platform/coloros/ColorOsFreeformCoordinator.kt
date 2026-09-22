@@ -54,6 +54,7 @@ internal class ColorOsFreeformCoordinator(
     private var repeatGestureToast: Toast? = null
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val launcher = ColorOsFreeformLauncher(context)
+    private val shortcuts = ColorOsAppShortcuts(context)
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
         ColorOsAppCatalog(context, catalogExecutor, logger) { snapshot ->
@@ -327,7 +328,10 @@ internal class ColorOsFreeformCoordinator(
                 val selected = overlay?.updateGesture(action.x, action.y)
                 gestureEngine.setSelection(selected)
             }
-            is GestureAction.Commit -> overlay?.finishGesture()
+            is GestureAction.Commit -> {
+                overlay?.updateGesture(event.x, event.y)
+                overlay?.finishGesture()
+            }
             GestureAction.Cancel -> overlay?.cancelGesture()
             GestureAction.Ignore, GestureAction.PassThrough -> Unit
         }
@@ -408,6 +412,31 @@ internal class ColorOsFreeformCoordinator(
         removeOverlay()
         handler.post {
             if (generation == pointerGeneration) launchCommittedApp(entry)
+        }
+    }
+
+    override fun onShortcutsRequested(entry: RadialAppEntry, onResult: (List<AppShortcut>) -> Unit) {
+        val generation = pointerGeneration
+        catalogExecutor.execute {
+            val result = shortcuts.forActivity(entry.component)
+            handler.post {
+                if (generation == pointerGeneration && overlay != null) onResult(result)
+            }
+        }
+    }
+
+    override fun onShortcutCommitted(shortcut: AppShortcut) {
+        val generation = pointerGeneration
+        activeEnvironmentApproved = false
+        gestureEngine.cancel()
+        removeOverlay()
+        handler.post {
+            if (generation != pointerGeneration || !isGestureEnvironmentAllowed()) return@post
+            when (val result = launcher.launch(shortcut)) {
+                FreeformLaunchResult.Started -> Unit
+                FreeformLaunchResult.TargetUnavailable -> logger(Log.WARN, "FREEFORM_SHORTCUT_TARGET_UNAVAILABLE", null)
+                is FreeformLaunchResult.Failed -> logger(Log.WARN, result.diagnosticCode, result.cause)
+            }
         }
     }
 
