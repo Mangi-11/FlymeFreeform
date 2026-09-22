@@ -41,8 +41,8 @@ class RadialIconGeometryTest {
     fun everyRingFitsBothCornersWithoutOverlappingAndEverySlotCanBeSelected() {
         for (icon in listOf(24, 44, 72)) {
             for (radius in listOf(110, 272, 400)) {
-                for (gap in listOf(0, 12, 48)) {
-                    val settings = RadialMenuSettings(icon, radius, gap, Int.MAX_VALUE)
+                for (gap in listOf(0, 12, 48)) for (itemGap in listOf(0, 24, 48)) {
+                    val settings = RadialMenuSettings(icon, radius, gap, Int.MAX_VALUE, itemGap)
                     val menu = RadialMenuGeometry.calculate(settings, 400)
                     for (insets in listOf(OverlaySafeInsets(), OverlaySafeInsets(100f, 50f, 110f, 60f))) {
                         val metrics = RadialIconGeometry.fit(400f, 890f, 1f, insets, menu.capacity, settings)

@@ -28,6 +28,7 @@ internal object ModulePreferences {
     const val KEY_RADIAL_RADIUS_DP = "radial_radius_dp_v2"
     const val KEY_RADIAL_RING_GAP_DP = "radial_ring_gap_dp_v2"
     const val KEY_RADIAL_RING_COUNT = "radial_ring_count_v2"
+    const val KEY_RADIAL_ITEM_GAP_DP = "radial_item_gap_dp_v1"
 
     fun coerceCornerTriggerRangeDp(value: Int): Int =
         value.coerceIn(MIN_CORNER_TRIGGER_RANGE_DP, MAX_CORNER_TRIGGER_RANGE_DP)

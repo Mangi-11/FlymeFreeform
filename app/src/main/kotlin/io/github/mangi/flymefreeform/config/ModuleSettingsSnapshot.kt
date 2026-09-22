@@ -34,6 +34,7 @@ internal data class ModuleSettingsSnapshot(
             .putInt(ModulePreferences.KEY_RADIAL_RADIUS_DP, radial.radiusDp)
             .putInt(ModulePreferences.KEY_RADIAL_RING_GAP_DP, radial.ringGapDp)
             .putInt(ModulePreferences.KEY_RADIAL_RING_COUNT, radial.ringCount)
+            .putInt(ModulePreferences.KEY_RADIAL_ITEM_GAP_DP, radial.itemGapDp)
             .putBoolean(ModulePreferences.KEY_MODULE_ENABLED, enabled)
             .putBoolean(ModulePreferences.KEY_LEFT_CORNER_ENABLED, leftCornerEnabled)
             .putBoolean(ModulePreferences.KEY_RIGHT_CORNER_ENABLED, rightCornerEnabled)
@@ -120,6 +121,7 @@ internal data class ModuleSettingsSnapshot(
                     radiusDp = preferences.getInt(ModulePreferences.KEY_RADIAL_RADIUS_DP, radialDefaults.radiusDp),
                     ringGapDp = preferences.getInt(ModulePreferences.KEY_RADIAL_RING_GAP_DP, radialDefaults.ringGapDp),
                     ringCount = preferences.getInt(ModulePreferences.KEY_RADIAL_RING_COUNT, radialDefaults.ringCount),
+                    itemGapDp = preferences.getInt(ModulePreferences.KEY_RADIAL_ITEM_GAP_DP, radialDefaults.itemGapDp),
                 ).sanitized(),
                 pinsSaved = pinsSaved,
                 pinnedComponents = pins,

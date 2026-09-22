@@ -10,10 +10,11 @@ class ModuleSettingsSnapshotTest {
     @Test
     fun radialSettingsRoundTripAndIgnoreRetiredAppearanceKeys() {
         val preferences = InMemoryPreferences()
-        val expected = ModuleSettingsSnapshot(radialMenu = RadialMenuSettings(32, 360, 18, 4))
+        val expected = ModuleSettingsSnapshot(radialMenu = RadialMenuSettings(32, 360, 18, 4, 20))
         expected.writeTo(preferences.edit()).commit()
         assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
         assertEquals(RadialMenuSettings(), ModuleSettingsSnapshot.readFrom(InMemoryPreferences()).radialMenu)
+        assertEquals(48, RadialMenuSettings(itemGapDp = 100).sanitized().itemGapDp)
     }
 
     @Test

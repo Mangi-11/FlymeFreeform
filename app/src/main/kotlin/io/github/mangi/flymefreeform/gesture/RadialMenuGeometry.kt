@@ -5,7 +5,7 @@ import kotlin.math.PI
 import kotlin.math.asin
 import kotlin.math.floor
 
-internal data class RadialRing(val radius: Float, val edgeAngle: Float, val capacity: Int)
+internal data class RadialRing(val radius: Float, val edgeAngle: Float, val capacity: Int, val itemAngle: Float)
 
 /** 设置、示例和 Hook 使用同一个模型，容量包含一个“更多”入口。角度以弧度表示。 */
 internal data class RadialMenuGeometry(
@@ -24,10 +24,10 @@ internal data class RadialMenuGeometry(
                 val radius = (outerCenter - index * resolved.ringPitchDp()).coerceAtLeast(extent)
                 val edgeAngle = asin((extent / radius).coerceIn(0f, 1f))
                 val span = (PI.toFloat() / 2f - 2f * edgeAngle).coerceAtLeast(0f)
-                // 弦长而不是弧长决定图标是否重叠；描边也包含在预算内。
-                val step = 2f * asin((extent / radius).coerceIn(0f, 1f))
+                // 按弦长留出同圈净间距；描边也包含在图标占用范围内。
+                val step = 2f * asin(((extent + resolved.itemGapDp / 2f) / radius).coerceIn(0f, 1f))
                 val count = (floor(span / step + 0.00001f).toInt() + 1).coerceAtLeast(1)
-                RadialRing(radius, edgeAngle, count)
+                RadialRing(radius, edgeAngle, count, step)
             }
             return RadialMenuGeometry(resolved, rings)
         }

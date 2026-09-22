@@ -88,7 +88,9 @@
     <string name="radial_radius_summary">最大为手机短边 %1$d dp；拖动查看扇形示例，安全区域不足时等比缩小</string>
     <string name="radial_ring_gap_title">圈间距</string>
     <string name="radial_ring_gap_summary">相邻两圈图标边缘（含选中描边）之间的距离</string>
+    <string name="radial_item_gap_title">同圈图标间距</string>
+    <string name="radial_item_gap_summary">同一圈相邻图标边缘（含选中描边）之间的距离</string>
     <string name="radial_ring_count_title">圈数</string>
-    <string name="radial_ring_count_summary">当前 %1$d 圈，按图标尺寸、半径和间距最多可容纳 %2$d 圈</string>
+    <string name="radial_ring_count_summary">当前 %1$d 圈，按图标尺寸、半径和圈间距最多可容纳 %2$d 圈</string>
     <string name="radial_ring_count_value">%1$d 圈</string>
 </resources>

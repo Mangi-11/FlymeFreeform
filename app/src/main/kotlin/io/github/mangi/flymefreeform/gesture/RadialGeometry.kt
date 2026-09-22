@@ -39,9 +39,10 @@ internal object RadialGeometry {
                 val count = minOf(remaining, ring.capacity)
                 if (count == 0) break
                 val span = PI.toFloat() / 2f - 2f * ring.edgeAngle
+                val start = ring.edgeAngle + (span - (count - 1) * ring.itemAngle) / 2f
                 repeat(count) { slot ->
                     val angleFromEdge = if (count == 1) PI.toFloat() / 4f
-                        else ring.edgeAngle + span * slot / (count - 1)
+                        else start + ring.itemAngle * slot
                     val angle = if (side == CornerSide.Left) -angleFromEdge
                         else -PI.toFloat() + angleFromEdge
                     slots += GesturePoint(origin.x + cos(angle) * ring.radius,

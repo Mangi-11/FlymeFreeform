@@ -22,6 +22,7 @@ class AppCatalogSnapshotTest {
         assertFalse(snapshot.matches(settings.copy(radialMenu = settings.radialMenu.copy(iconSizeDp = 32))))
         assertFalse(snapshot.matches(settings.copy(radialMenu = settings.radialMenu.copy(radiusDp = 360))))
         assertFalse(snapshot.matches(settings.copy(radialMenu = settings.radialMenu.copy(ringGapDp = 24))))
+        assertFalse(snapshot.matches(settings.copy(radialMenu = settings.radialMenu.copy(itemGapDp = 24))))
     }
 
     @Test

@@ -104,6 +104,12 @@ internal fun RadialSettingsCard(
             range = 0..RadialMenuSettings.MAX_GAP_DP,
         ) { settings, value -> settings.copy(ringGapDp = value) }
         Setting(
+            title = stringResource(R.string.radial_item_gap_title),
+            summary = stringResource(R.string.radial_item_gap_summary),
+            value = confirmed.itemGapDp,
+            range = 0..RadialMenuSettings.MAX_GAP_DP,
+        ) { settings, value -> settings.copy(itemGapDp = value) }
+        Setting(
             title = stringResource(R.string.radial_ring_count_title),
             summary = stringResource(R.string.radial_ring_count_summary, shown.ringCount, shown.maxRingCount()),
             value = confirmed.ringCount,

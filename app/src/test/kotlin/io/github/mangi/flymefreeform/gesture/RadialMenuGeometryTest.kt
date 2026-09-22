@@ -23,6 +23,27 @@ class RadialMenuGeometryTest {
         assertTrue(capacity(radius = 400) > capacity(radius = 200))
         assertTrue(capacity(gap = 0) > capacity(gap = 48))
         assertTrue(capacity(rings = 3) > capacity(rings = 1))
+        assertTrue(
+            RadialMenuGeometry.calculate(RadialMenuSettings(itemGapDp = 0), 400).capacity >
+                RadialMenuGeometry.calculate(RadialMenuSettings(itemGapDp = 48), 400).capacity,
+        )
+    }
+
+    @Test
+    fun sameRingGapChangesPositionsEvenBeforeCapacityChanges() {
+        val compact = RadialMenuGeometry.calculate(RadialMenuSettings(itemGapDp = 0), 400)
+        val spaced = RadialMenuGeometry.calculate(RadialMenuSettings(itemGapDp = 4), 400)
+        assertEquals(compact.capacity, spaced.capacity)
+        val compactLayout = RadialGeometry.layout(CornerSide.Left, 400f, 890f,
+            compact.rings.first().radius, compact.capacity, rings = compact.rings)
+        val spacedLayout = RadialGeometry.layout(CornerSide.Left, 400f, 890f,
+            spaced.rings.first().radius, spaced.capacity, rings = spaced.rings)
+        val first = spacedLayout.itemCenters[0]
+        val second = spacedLayout.itemCenters[1]
+        val diameterWithPadding = spaced.settings.iconSizeDp + 2f * RadialMenuSettings.ITEM_PADDING_DP
+        assertEquals(4f, hypot(first.x - second.x, first.y - second.y) - diameterWithPadding, 0.001f)
+        assertTrue(hypot(first.x - compactLayout.itemCenters[0].x,
+            first.y - compactLayout.itemCenters[0].y) > 0.1f)
     }
 
     @Test
