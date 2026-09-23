@@ -14,10 +14,13 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.Toast
+import io.github.mangi.flymefreeform.config.screenShortEdgeDp
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
+import io.github.mangi.flymefreeform.gesture.CornerTriggerRegion
 import io.github.mangi.flymefreeform.gesture.GestureAction
 import io.github.mangi.flymefreeform.hook.ModuleEnvironmentState
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
@@ -49,14 +52,16 @@ internal class ColorOsFreeformCoordinator(
         )
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val gestureEngine = CornerGestureEngine()
+    private var repeatGestureToast: Toast? = null
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val launcher = ColorOsFreeformLauncher(context)
+    private val shortcuts = ColorOsAppShortcuts(context)
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
         ColorOsAppCatalog(context, catalogExecutor, logger) { snapshot ->
             handler.post {
                 // 后台任务完成时配置可能已再次变化，旧结果不得覆盖新外观。
-                if (snapshot.matches(lastSettings)) {
+                if (snapshot.matches(lastSettings, screenShortEdgeDp(context))) {
                     catalogSnapshot = snapshot
                     overlay?.updateRadialAppearance(snapshot)
                 }
@@ -76,8 +81,14 @@ internal class ColorOsFreeformCoordinator(
     private var pointerRegistered = false
     @Volatile
     private var pointerGeneration = 0L
+
+    /** 输入线程跟踪角落起始的触摸序列；主线程注销监听时复位，非角落触摸不再复制或排队。 */
+    @Volatile
+    private var pointerTracking = false
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
+    // 主线程更新，输入线程在复制事件前读取，用于角落触发区预筛选。
+    @Volatile
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
     private var activeGestureConfig: CornerGestureConfig? = null
@@ -116,14 +127,18 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun applySettings(settings: ModuleSettingsSnapshot) {
+        gestureEngine.resetConfirmation()
+        repeatGestureToast?.cancel()
+        repeatGestureToast = null
         val selectionChanged =
             settings.pinsSaved != lastSettings.pinsSaved ||
-                settings.pinnedComponents != lastSettings.pinnedComponents
+                settings.pinnedComponents != lastSettings.pinnedComponents ||
+                settings.radialMenu != lastSettings.radialMenu
         lastSettings = settings
         if (environmentState.isGestureAllowed(refreshKeyguard = true) && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
             val resuming = !pointerRegistered
             registerPointerListener()
-            if (resuming || selectionChanged || !catalogSnapshot.matches(settings) || catalogSnapshot.radialApps.isEmpty()) {
+            if (resuming || selectionChanged || !catalogSnapshot.matches(settings, screenShortEdgeDp(context)) || catalogSnapshot.radialApps.isEmpty()) {
                 appCatalog.refresh(settings, reloadApps = resuming || selectionChanged || catalogSnapshot.radialApps.isEmpty())
             }
         } else {
@@ -175,8 +190,18 @@ internal class ColorOsFreeformCoordinator(
 
     private fun enqueuePointerEvent(event: MotionEvent, generation: Long) {
         if (!pointerRegistered || generation != pointerGeneration) return
+        // 热路径优化：只有落在角落触发区的 DOWN 才可能开始手势，其余触摸直接放过，
+        // 连 MotionEvent.obtain() 复制与跨线程 post 都不做。一旦开始跟踪，本次触摸序列
+        // （含 MOVE/POINTER_DOWN/UP/CANCEL）全部照旧转发，引擎状态机与取消逻辑保持不变。
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            pointerTracking = isCornerTouch(event)
+        }
+        if (!pointerTracking) return
+        val finishesTouch =
+            event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL
         val copy = QueuedPointerEvent(MotionEvent.obtain(event), generation)
         if (event.actionMasked != MotionEvent.ACTION_MOVE) {
+            if (finishesTouch) pointerTracking = false
             val precedingMove =
                 synchronized(pointerQueueLock) {
                     pendingMove.also { pendingMove = null }
@@ -197,6 +222,27 @@ internal class ColorOsFreeformCoordinator(
             }
         }
         if (shouldPost) handler.post(::drainPendingMove)
+    }
+
+    /** 与手势引擎使用同一套几何：命中任一已启用角落的触发半径才可能开始手势。 */
+    private fun isCornerTouch(event: MotionEvent): Boolean {
+        val settings = lastSettings
+        if (!settings.enabled) return false
+        if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return false
+        val metrics = context.resources.displayMetrics
+        return CornerTriggerRegion.detectSide(
+            x = event.x,
+            y = event.y,
+            displayWidth = metrics.widthPixels.toFloat(),
+            displayHeight = metrics.heightPixels.toFloat(),
+            radius =
+                CornerTriggerRegion.radiusPx(
+                    settings.cornerTriggerRangeDp,
+                    metrics.density,
+                ),
+            leftEnabled = settings.leftCornerEnabled,
+            rightEnabled = settings.rightCornerEnabled,
+        ) != null
     }
 
     private fun drainPendingMove() {
@@ -225,6 +271,7 @@ internal class ColorOsFreeformCoordinator(
 
     private fun unregisterPointerListener() {
         pointerGeneration++
+        pointerTracking = false
         clearPendingMove()
         val listener = pointerListener ?: return
         pointerRegistered = false
@@ -288,7 +335,10 @@ internal class ColorOsFreeformCoordinator(
         val action =
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN ->
-                    gestureEngine.down(event.getPointerId(0), event.x, event.y, config)
+                    gestureEngine.down(
+                        event.getPointerId(0), event.x, event.y, config,
+                        requiresConfirmation = environmentState.requiresGestureConfirmation(),
+                    )
                 MotionEvent.ACTION_MOVE -> {
                     val index = event.findPointerIndex(event.getPointerId(0)).coerceAtLeast(0)
                     gestureEngine.move(
@@ -297,6 +347,7 @@ internal class ColorOsFreeformCoordinator(
                         event.getX(index),
                         event.getY(index),
                         config,
+                        eventTime = event.eventTime,
                     )
                 }
                 MotionEvent.ACTION_UP -> gestureEngine.up(event.getPointerId(event.actionIndex))
@@ -304,6 +355,8 @@ internal class ColorOsFreeformCoordinator(
                 else -> if (gestureEngine.isClaimed) gestureEngine.cancel() else GestureAction.Ignore
             }
         when (action) {
+            // SystemUI/桌面仍按普通角落手势拦截首次触摸；这里只阻止菜单生效，避免误触透传。
+            GestureAction.RequireRepeat -> showRepeatGestureToast()
             is GestureAction.Activate ->
                 showOverlay(
                     side = action.side,
@@ -314,7 +367,10 @@ internal class ColorOsFreeformCoordinator(
                 val selected = overlay?.updateGesture(action.x, action.y)
                 gestureEngine.setSelection(selected)
             }
-            is GestureAction.Commit -> overlay?.finishGesture()
+            is GestureAction.Commit -> {
+                overlay?.updateGesture(event.x, event.y)
+                overlay?.finishGesture()
+            }
             GestureAction.Cancel -> overlay?.cancelGesture()
             GestureAction.Ignore, GestureAction.PassThrough -> Unit
         }
@@ -324,11 +380,23 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    private fun showRepeatGestureToast() {
+        try {
+            repeatGestureToast?.cancel()
+            // 当前 Context 属于 system_server，不能用模块的资源 ID 查询宿主资源。
+            repeatGestureToast = Toast.makeText(context, "请再划一次", Toast.LENGTH_SHORT).also { it.show() }
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "GESTURE_REPEAT_TOAST_FAILED", exception)
+        }
+    }
+
     private fun showOverlay(
         side: io.github.mangi.flymefreeform.gesture.CornerSide,
         x: Float,
         y: Float,
     ) {
+        repeatGestureToast?.cancel()
+        repeatGestureToast = null
         removeOverlay()
         morePanelActive = false
         val params = createOverlayParams(focusable = false)
@@ -383,6 +451,31 @@ internal class ColorOsFreeformCoordinator(
         removeOverlay()
         handler.post {
             if (generation == pointerGeneration) launchCommittedApp(entry)
+        }
+    }
+
+    override fun onShortcutsRequested(entry: RadialAppEntry, onResult: (List<AppShortcut>) -> Unit) {
+        val generation = pointerGeneration
+        catalogExecutor.execute {
+            val result = shortcuts.forActivity(entry.component)
+            handler.post {
+                if (generation == pointerGeneration && overlay != null) onResult(result)
+            }
+        }
+    }
+
+    override fun onShortcutCommitted(shortcut: AppShortcut) {
+        val generation = pointerGeneration
+        activeEnvironmentApproved = false
+        gestureEngine.cancel()
+        removeOverlay()
+        handler.post {
+            if (generation != pointerGeneration || !isGestureEnvironmentAllowed()) return@post
+            when (val result = launcher.launch(shortcut)) {
+                FreeformLaunchResult.Started -> Unit
+                FreeformLaunchResult.TargetUnavailable -> logger(Log.WARN, "FREEFORM_SHORTCUT_TARGET_UNAVAILABLE", null)
+                is FreeformLaunchResult.Failed -> logger(Log.WARN, result.diagnosticCode, result.cause)
+            }
         }
     }
 

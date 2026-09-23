@@ -10,6 +10,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import io.github.mangi.flymefreeform.apps.InstalledLauncherApp
+import io.github.mangi.flymefreeform.config.RadialMenuSettings
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
 import kotlinx.serialization.Serializable
@@ -31,10 +32,14 @@ internal fun FlymeFreeformNavHost(
     onLeftCornerEnabledChange: (Boolean) -> Unit,
     onRightCornerEnabledChange: (Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
+    onRadialMenuChange: (RadialMenuSettings) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    onHandleDoubleTapCloseEnabledChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
+    onPreventMistouchInLandscapeChange: (Boolean) -> Unit,
+    onPreventMistouchInGameModeChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
     onPinnedComponentsChange: (List<ComponentName>) -> Unit,
 ) {
@@ -68,11 +73,15 @@ internal fun FlymeFreeformNavHost(
                         onLeftCornerEnabledChange = onLeftCornerEnabledChange,
                         onRightCornerEnabledChange = onRightCornerEnabledChange,
                         onCornerTriggerRangeChange = onCornerTriggerRangeChange,
+                        onRadialMenuChange = onRadialMenuChange,
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,
+                        onHandleDoubleTapCloseEnabledChange = onHandleDoubleTapCloseEnabledChange,
                         onPauseInLandscapeChange = onPauseInLandscapeChange,
                         onPauseInGameModeChange = onPauseInGameModeChange,
+                        onPreventMistouchInLandscapeChange = onPreventMistouchInLandscapeChange,
+                        onPreventMistouchInGameModeChange = onPreventMistouchInGameModeChange,
                         onRequestScopes = onRequestScopes,
                         onNavigateToPinnedApps = navigateToPinnedApps,
                     )

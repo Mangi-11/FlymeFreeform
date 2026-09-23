@@ -8,14 +8,27 @@ import org.junit.Test
 
 class ModuleSettingsSnapshotTest {
     @Test
+    fun radialSettingsRoundTripAndIgnoreRetiredAppearanceKeys() {
+        val preferences = InMemoryPreferences()
+        val expected = ModuleSettingsSnapshot(radialMenu = RadialMenuSettings(32, 360, 18, 4, 20))
+        expected.writeTo(preferences.edit()).commit()
+        assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+        assertEquals(RadialMenuSettings(), ModuleSettingsSnapshot.readFrom(InMemoryPreferences()).radialMenu)
+        assertEquals(48, RadialMenuSettings(itemGapDp = 100).sanitized().itemGapDp)
+    }
+
+    @Test
     fun missingKeysUseProductDefaults() {
         val snapshot = ModuleSettingsSnapshot.readFrom(InMemoryPreferences())
 
         assertEquals(84, snapshot.cornerTriggerRangeDp)
         assertEquals(OutsideTapCloseMode.SingleTap, snapshot.outsideTapCloseMode)
         assertTrue(snapshot.handleSwipeUpToMiniEnabled)
+        assertFalse(snapshot.handleDoubleTapCloseEnabled)
         assertTrue(snapshot.pauseInLandscape)
         assertTrue(snapshot.pauseInGameMode)
+        assertFalse(snapshot.preventMistouchInLandscape)
+        assertFalse(snapshot.preventMistouchInGameMode)
     }
 
     @Test
@@ -51,6 +64,20 @@ class ModuleSettingsSnapshotTest {
     }
 
     @Test
+    fun handleDoubleTapCloseRoundTripsIndependently() {
+        for (enabled in listOf(false, true)) {
+            val preferences = InMemoryPreferences()
+            val expected = ModuleSettingsSnapshot(
+                handleDoubleTapCloseEnabled = enabled,
+                handleSwipeUpToMiniEnabled = !enabled,
+                outsideTapCloseMode = OutsideTapCloseMode.Disabled,
+            )
+            expected.writeTo(preferences.edit()).commit()
+            assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+        }
+    }
+
+    @Test
     fun pauseSwitchesRoundTripIndependently() {
         for (landscape in listOf(false, true)) {
             for (game in listOf(false, true)) {
@@ -83,6 +110,41 @@ class ModuleSettingsSnapshotTest {
 
         val allowBoth = defaults.copy(pauseInLandscape = false, pauseInGameMode = false)
         assertFalse(allowBoth.isPausedByEnvironment(landscape = true, gameMode = true))
+    }
+
+    @Test
+    fun preventionSwitchesRoundTripIndependently() {
+        for (landscape in listOf(false, true)) {
+            for (game in listOf(false, true)) {
+                val preferences = InMemoryPreferences()
+                val expected = ModuleSettingsSnapshot(
+                    preventMistouchInLandscape = landscape,
+                    preventMistouchInGameMode = game,
+                )
+                expected.writeTo(preferences.edit()).commit()
+                assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+            }
+        }
+    }
+
+    @Test
+    fun preventionMatchesEitherEnvironmentAndPauseTakesPriority() {
+        for (landscape in listOf(false, true)) {
+            for (game in listOf(false, true)) {
+                val settings = ModuleSettingsSnapshot(
+                    pauseInLandscape = false,
+                    pauseInGameMode = false,
+                    preventMistouchInLandscape = landscape,
+                    preventMistouchInGameMode = game,
+                )
+                assertFalse(settings.requiresGestureConfirmation(landscape = false, gameMode = false))
+                assertEquals(landscape, settings.requiresGestureConfirmation(landscape = true, gameMode = false))
+                assertEquals(game, settings.requiresGestureConfirmation(landscape = false, gameMode = true))
+                assertEquals(landscape || game, settings.requiresGestureConfirmation(landscape = true, gameMode = true))
+                assertFalse(settings.copy(pauseInLandscape = true).requiresGestureConfirmation(true, true))
+                assertFalse(settings.copy(pauseInGameMode = true).requiresGestureConfirmation(true, true))
+            }
+        }
     }
 
     @Test

@@ -40,20 +40,22 @@
     <string name="corner_trigger_range_summary">范围越大越容易呼出；范围内的系统手势由扇形菜单接管</string>
     <string name="dp_value">%1$d dp</string>
     <string name="radial_apps_title">扇形应用</string>
-    <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的六个应用</string>
+    <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的应用，最多 %1$d 个</string>
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>
-    <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
+    <string name="radial_apps_count_summary">已固定 %1$d / %2$d 个应用</string>
 
     <string name="outside_tap_close_title">点击小窗外关闭</string>
     <string name="outside_tap_close_summary">选择不执行、单击关闭或双击关闭；三种模式互斥</string>
     <string name="outside_tap_mode_disabled">不执行</string>
     <string name="outside_tap_mode_single">单击关闭</string>
     <string name="outside_tap_mode_double">双击关闭</string>
+    <string name="handle_double_tap_close_title">双击小横条快速关闭</string>
+    <string name="handle_double_tap_close_summary">双击普通小窗底部的小横条，快速关闭当前小窗</string>
     <string name="handle_swipe_up_to_mini_title">快速上滑切换为迷你窗</string>
     <string name="handle_swipe_up_to_mini_summary">在普通小窗底部横条快速向上滑，切换为迷你小窗</string>
 
     <string name="radial_apps_screen_title">扇形应用</string>
-    <string name="radial_apps_screen_subtitle">按此顺序显示在扇形中，长按拖动调整顺序</string>
+    <string name="radial_apps_screen_subtitle">最多显示 %1$d 个应用，长按拖动调整顺序</string>
     <string name="added_apps_title">已添加</string>
     <string name="added_apps_empty">未添加应用</string>
     <string name="added_apps_empty_summary">在「选择应用」中添加后，按此顺序显示在扇形中</string>
@@ -75,4 +77,22 @@
     <string name="pause_in_landscape_summary">横屏时暂停模块增强，恢复竖屏后自动启用</string>
     <string name="pause_in_game_mode_title">游戏模式时暂停</string>
     <string name="pause_in_game_mode_summary">系统进入游戏模式时暂停模块增强，退出后自动启用</string>
+    <string name="prevent_mistouch_in_landscape_title">横屏时防误触</string>
+    <string name="prevent_mistouch_in_landscape_summary">横屏时，需在 2 秒内从同一侧滑动两次才唤出菜单</string>
+    <string name="prevent_mistouch_in_game_mode_title">游戏模式时防误触</string>
+    <string name="prevent_mistouch_in_game_mode_summary">游戏模式时，需在 2 秒内从同一侧滑动两次才唤出菜单</string>
+    <string name="radial_layout_title">扇形布局</string>
+    <string name="radial_capacity_summary">当前可固定 %1$d 个应用，另预留一个“更多”入口</string>
+    <string name="radial_apps_overflow_summary">已固定 %1$d 个，当前显示前 %2$d 个；其余保留顺序，可在“更多”中找到</string>
+    <string name="radial_icon_size_title">图标尺寸</string>
+    <string name="radial_icon_size_summary">调整扇形中的图标大小，容量随尺寸自动变化</string>
+    <string name="radial_radius_title">扇形区域半径</string>
+    <string name="radial_radius_summary">最大为手机短边 %1$d dp；拖动查看扇形示例，安全区域不足时等比缩小</string>
+    <string name="radial_ring_gap_title">圈间距</string>
+    <string name="radial_ring_gap_summary">相邻两圈图标边缘（含选中描边）之间的距离</string>
+    <string name="radial_item_gap_title">同圈图标间距</string>
+    <string name="radial_item_gap_summary">同一圈相邻图标边缘（含选中描边）之间的距离</string>
+    <string name="radial_ring_count_title">圈数</string>
+    <string name="radial_ring_count_summary">当前 %1$d 圈，按图标尺寸、半径和圈间距最多可容纳 %2$d 圈</string>
+    <string name="radial_ring_count_value">%1$d 圈</string>
 </resources>

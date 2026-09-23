@@ -11,6 +11,5 @@ internal object PinnedComponentCodec {
                 separator > 0 && separator < flattened.lastIndex
             }
             .distinct()
-            .take(ModulePreferences.MAX_PINNED_APPS)
             .toList()
 }

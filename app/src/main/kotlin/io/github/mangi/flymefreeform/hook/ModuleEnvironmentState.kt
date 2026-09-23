@@ -129,6 +129,9 @@ internal class ModuleEnvironmentState(
         return isModuleAllowed() && gestureNavigation && !keyguardLocked
     }
 
+    fun requiresGestureConfirmation(): Boolean =
+        configuration.snapshot.requiresGestureConfirmation(landscape = !portrait, gameMode = gameModeActive)
+
     private fun updateDisplay(displayId: Int) {
         if (displayId != Display.DEFAULT_DISPLAY) return
         refreshDisplay()

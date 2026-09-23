@@ -5,7 +5,7 @@ import org.junit.Test
 
 class PinnedComponentCodecTest {
     @Test
-    fun ignoresMalformedAndDuplicateLinesAndCapsAtSix() {
+    fun ignoresMalformedAndDuplicateLinesWithoutTruncatingPins() {
         val raw = """
             a/.A
             invalid
@@ -17,7 +17,7 @@ class PinnedComponentCodecTest {
             f/.F
             g/.G
         """.trimIndent()
-        assertEquals(listOf("a/.A", "b/.B", "c/.C", "d/.D", "e/.E", "f/.F"), PinnedComponentCodec.decodeRaw(raw))
+        assertEquals(listOf("a/.A", "b/.B", "c/.C", "d/.D", "e/.E", "f/.F", "g/.G"), PinnedComponentCodec.decodeRaw(raw))
     }
 
     @Test

@@ -34,11 +34,15 @@ class MainActivity : ComponentActivity() {
                     onLeftCornerEnabledChange = repository::setLeftCornerEnabled,
                     onRightCornerEnabledChange = repository::setRightCornerEnabled,
                     onCornerTriggerRangeChange = repository::setCornerTriggerRangeDp,
+                    onRadialMenuChange = repository::setRadialMenu,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,
+                    onHandleDoubleTapCloseEnabledChange = repository::setHandleDoubleTapCloseEnabled,
                     onPauseInLandscapeChange = repository::setPauseInLandscape,
                     onPauseInGameModeChange = repository::setPauseInGameMode,
+                    onPreventMistouchInLandscapeChange = repository::setPreventMistouchInLandscape,
+                    onPreventMistouchInGameModeChange = repository::setPreventMistouchInGameMode,
                     onRequestScopes = repository::requestMissingScopes,
                     onPinnedComponentsChange = repository::setPinnedComponents,
                 )

@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.SharedPreferences
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
+import io.github.mangi.flymefreeform.config.RadialMenuSettings
 import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
@@ -60,11 +61,17 @@ internal class FrameworkConnectionRepository {
             )
         }
 
+    fun setRadialMenu(settings: RadialMenuSettings) =
+        updateSettings { it.copy(radialMenu = settings.sanitized()) }
+
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 
     fun setHandleSwipeUpToMiniEnabled(enabled: Boolean) =
         updateSettings { it.copy(handleSwipeUpToMiniEnabled = enabled) }
+
+    fun setHandleDoubleTapCloseEnabled(enabled: Boolean) =
+        updateSettings { it.copy(handleDoubleTapCloseEnabled = enabled) }
 
     fun setPauseInLandscape(enabled: Boolean) =
         updateSettings { it.copy(pauseInLandscape = enabled) }
@@ -72,12 +79,18 @@ internal class FrameworkConnectionRepository {
     fun setPauseInGameMode(enabled: Boolean) =
         updateSettings { it.copy(pauseInGameMode = enabled) }
 
+    fun setPreventMistouchInLandscape(enabled: Boolean) =
+        updateSettings { it.copy(preventMistouchInLandscape = enabled) }
+
+    fun setPreventMistouchInGameMode(enabled: Boolean) =
+        updateSettings { it.copy(preventMistouchInGameMode = enabled) }
+
     fun setPinnedComponents(components: List<ComponentName>) =
         updateSettings {
             it.copy(
                 pinsSaved = true,
                 pinnedComponents =
-                    components.distinct().take(ModulePreferences.MAX_PINNED_APPS),
+                    components.distinct(),
             )
         }
 

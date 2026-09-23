@@ -10,18 +10,27 @@ internal object ModulePreferences {
     const val KEY_CORNER_PINS = "corner_pins_v1"
     const val KEY_OUTSIDE_TAP_CLOSE_MODE = "outside_tap_close_mode_v1"
     const val KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED = "handle_swipe_up_to_mini_enabled"
+    const val KEY_HANDLE_DOUBLE_TAP_CLOSE_ENABLED = "handle_double_tap_close_enabled"
     const val KEY_PAUSE_IN_LANDSCAPE = "pause_in_landscape"
     const val KEY_PAUSE_IN_GAME_MODE = "pause_in_game_mode"
+    const val KEY_PREVENT_MISTOUCH_IN_LANDSCAPE = "prevent_mistouch_in_landscape"
+    const val KEY_PREVENT_MISTOUCH_IN_GAME_MODE = "prevent_mistouch_in_game_mode"
+    const val DEFAULT_PREVENT_MISTOUCH = false
     const val DEFAULT_ENABLED = false
     const val DEFAULT_CORNER_ENABLED = true
     const val DEFAULT_CORNER_TRIGGER_RANGE_DP = 84
     val DEFAULT_OUTSIDE_TAP_CLOSE_MODE = OutsideTapCloseMode.SingleTap
     const val DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED = true
+    const val DEFAULT_HANDLE_DOUBLE_TAP_CLOSE_ENABLED = false
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
     const val MIN_CORNER_TRIGGER_RANGE_DP = 24
     const val MAX_CORNER_TRIGGER_RANGE_DP = 160
-    const val MAX_PINNED_APPS = 6
+    const val KEY_RADIAL_ICON_SIZE_DP = "radial_icon_size_dp_v2"
+    const val KEY_RADIAL_RADIUS_DP = "radial_radius_dp_v2"
+    const val KEY_RADIAL_RING_GAP_DP = "radial_ring_gap_dp_v2"
+    const val KEY_RADIAL_RING_COUNT = "radial_ring_count_v2"
+    const val KEY_RADIAL_ITEM_GAP_DP = "radial_item_gap_dp_v1"
 
     fun coerceCornerTriggerRangeDp(value: Int): Int =
         value.coerceIn(MIN_CORNER_TRIGGER_RANGE_DP, MAX_CORNER_TRIGGER_RANGE_DP)
