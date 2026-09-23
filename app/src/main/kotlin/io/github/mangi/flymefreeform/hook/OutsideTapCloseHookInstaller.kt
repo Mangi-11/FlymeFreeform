@@ -370,22 +370,38 @@ internal class OutsideTapCloseHookInstaller(
                     else OutsideTapCloseMode.Disabled
                 engine.updateMode(mode)
                 if (mode == OutsideTapCloseMode.Disabled) return@synchronized null
-                val controller = controllerField.get(listener) ?: run {
-                    engine.interrupt()
-                    return@synchronized null
-                }
                 when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN ->
-                        beginOutsideTap(engine, controller, event, mode)
-                    MotionEvent.ACTION_MOVE ->
-                        updateOutsideTap(engine, controller, event)
-                    MotionEvent.ACTION_UP ->
-                        finishOutsideTap(engine, controller, event)
                     MotionEvent.ACTION_POINTER_DOWN,
                     MotionEvent.ACTION_CANCEL,
                     -> {
                         engine.interrupt()
                         null
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!engine.isTracking) return@synchronized null
+                        val controller = controllerField.get(listener) ?: run {
+                            engine.interrupt()
+                            return@synchronized null
+                        }
+                        updateOutsideTap(engine, controller, event)
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (!engine.isTracking) {
+                            engine.interrupt()
+                            return@synchronized null
+                        }
+                        val controller = controllerField.get(listener) ?: run {
+                            engine.interrupt()
+                            return@synchronized null
+                        }
+                        finishOutsideTap(engine, controller, event)
+                    }
+                    MotionEvent.ACTION_DOWN -> {
+                        val controller = controllerField.get(listener) ?: run {
+                            engine.interrupt()
+                            return@synchronized null
+                        }
+                        beginOutsideTap(engine, controller, event, mode)
                     }
                     else -> null
                 }

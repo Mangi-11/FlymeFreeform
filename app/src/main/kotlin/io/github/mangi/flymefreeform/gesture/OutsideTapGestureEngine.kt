@@ -8,6 +8,9 @@ internal class OutsideTapGestureEngine {
     private var activeTap: ActiveTap? = null
     private var previousTap: CompletedTap? = null
 
+    val isTracking: Boolean
+        get() = activeTap != null
+
     fun updateMode(nextMode: OutsideTapCloseMode) {
         if (mode == nextMode) return
         mode = nextMode

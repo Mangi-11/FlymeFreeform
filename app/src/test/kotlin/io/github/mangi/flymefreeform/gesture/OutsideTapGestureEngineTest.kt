@@ -21,7 +21,22 @@ class OutsideTapGestureEngineTest {
         val engine = engine(OutsideTapCloseMode.SingleTap)
         engine.begin(task, 1, 100f, 200f, 10L, captured = false)
 
+        assertFalse(engine.isTracking)
         assertFalse(engine.finish(task, 1, 100f, 200f, 100L, 500L, 8f, 300L, 40f))
+    }
+
+    @Test
+    fun trackingEndsAfterMovementAndInterrupt() {
+        val engine = engine(OutsideTapCloseMode.SingleTap)
+        engine.begin(task, 1, 0f, 0f, 0L, captured = true)
+        assertTrue(engine.isTracking)
+        engine.move(task, 1, 1, 20f, 0f, 8f)
+        assertFalse(engine.isTracking)
+
+        engine.begin(task, 1, 0f, 0f, 10L, captured = true)
+        assertTrue(engine.isTracking)
+        engine.interrupt()
+        assertFalse(engine.isTracking)
     }
 
     @Test

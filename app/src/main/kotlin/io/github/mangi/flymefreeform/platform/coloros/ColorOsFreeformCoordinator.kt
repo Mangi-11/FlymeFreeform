@@ -22,6 +22,8 @@ import io.github.mangi.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureConfig
 import io.github.mangi.flymefreeform.gesture.CornerGestureEngine
 import io.github.mangi.flymefreeform.gesture.GestureAction
+import io.github.mangi.flymefreeform.gesture.GesturePhase
+import io.github.mangi.flymefreeform.gesture.PointerStreamGate
 import io.github.mangi.flymefreeform.hook.ModuleEnvironmentState
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
 import io.github.mangi.flymefreeform.window.CornerRadialOverlayView
@@ -116,6 +118,7 @@ internal class ColorOsFreeformCoordinator(
     private var activeEnvironmentApproved = false
     private var activeGestureConfig: CornerGestureConfig? = null
     private val pointerQueueLock = Any()
+    private val pointerStreamGate = PointerStreamGate()
     private var pendingMove: QueuedPointerEvent? = null
     private var movePosted = false
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
@@ -235,7 +238,14 @@ internal class ColorOsFreeformCoordinator(
 
     private fun enqueuePointerEvent(event: MotionEvent, generation: Long) {
         if (!pointerRegistered || generation != pointerGeneration) return
-        val copy = QueuedPointerEvent(MotionEvent.obtain(event), generation)
+        val stream = if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            pointerStreamGate.begin()
+        } else {
+            pointerStreamGate.current()
+        }
+        // DOWN 仍用于取消待执行动作；主线程排除角落手势后才停止复制该流的后续事件。
+        if (event.actionMasked != MotionEvent.ACTION_DOWN && !pointerStreamGate.shouldForward(stream)) return
+        val copy = QueuedPointerEvent(MotionEvent.obtain(event), generation, stream)
         if (event.actionMasked != MotionEvent.ACTION_MOVE) {
             val precedingMove =
                 synchronized(pointerQueueLock) {
@@ -272,11 +282,17 @@ internal class ColorOsFreeformCoordinator(
         val event = queued.event
         try {
             if (queued.generation != pointerGeneration || !pointerRegistered) return
+            if (event.actionMasked != MotionEvent.ACTION_DOWN && !pointerStreamGate.shouldForward(queued.stream)) return
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 entryLaunchGeneration++
                 entryCatalog.cancelLaunch()
             }
             handlePointerEvent(event)
+            if (!shouldKeepPointerStream()) {
+                activeEnvironmentApproved = false
+                activeGestureConfig = null
+                pointerStreamGate.ignore(queued.stream)
+            }
         } catch (exception: RuntimeException) {
             gestureEngine.cancel()
             removeOverlay()
@@ -289,6 +305,7 @@ internal class ColorOsFreeformCoordinator(
 
     private fun unregisterPointerListener() {
         pointerGeneration++
+        pointerStreamGate.reset()
         clearPendingMove()
         val listener = pointerListener ?: return
         pointerRegistered = false
@@ -312,6 +329,12 @@ internal class ColorOsFreeformCoordinator(
             movePosted = false
         }
     }
+
+    private fun shouldKeepPointerStream(): Boolean =
+        activeEnvironmentApproved && !morePanelActive && when (gestureEngine.phase) {
+            GesturePhase.Armed, GesturePhase.Revealing, GesturePhase.Selecting -> true
+            else -> false
+        }
 
     private fun handlePointerEvent(event: MotionEvent) {
         if (morePanelActive) return
@@ -664,7 +687,7 @@ internal class ColorOsFreeformCoordinator(
         throw NoSuchMethodException(name)
     }
 
-    private data class QueuedPointerEvent(val event: MotionEvent, val generation: Long)
+    private data class QueuedPointerEvent(val event: MotionEvent, val generation: Long, val stream: Long)
 
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
