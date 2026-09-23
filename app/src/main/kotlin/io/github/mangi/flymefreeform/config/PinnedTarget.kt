@@ -6,7 +6,7 @@ import java.util.Base64
 internal sealed interface PinnedTarget {
     data class App(val packageName: String, val className: String) : PinnedTarget
     data class Sidebar(val kind: Kind, val alias: String, val userId: Int) : PinnedTarget
-    enum class Kind { Tool, Shortcut, AppEntry }
+    enum class Kind { Tool, Shortcut, AppEntry, CloneApp }
 }
 
 internal object PinnedTargetCodec {
@@ -22,6 +22,7 @@ internal object PinnedTargetCodec {
                 PinnedTarget.Kind.Tool -> "T"
                 PinnedTarget.Kind.Shortcut -> "S"
                 PinnedTarget.Kind.AppEntry -> "N"
+                PinnedTarget.Kind.CloneApp -> "C"
             }
             "$kind|${target.userId}|" + Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(target.alias.toByteArray(Charsets.UTF_8))
@@ -32,7 +33,7 @@ internal object PinnedTargetCodec {
         if (value.length > MAX_TEXT) return null
         val parts = value.split('|')
         if (parts.size == 2 && parts[0] == "A") return decodeApp(parts[1])
-        if (parts.size != 3 || parts[0] !in setOf("T", "S", "N")) return null
+        if (parts.size != 3 || parts[0] !in setOf("T", "S", "N", "C")) return null
         val user = parts[1].toIntOrNull()?.takeIf { it in 0..21_474 } ?: return null
         if (parts[1] != user.toString() || parts[2].length > MAX_PART * 2) return null
         val alias = try {
@@ -45,7 +46,8 @@ internal object PinnedTargetCodec {
             when (parts[0]) {
                 "T" -> PinnedTarget.Kind.Tool
                 "S" -> PinnedTarget.Kind.Shortcut
-                else -> PinnedTarget.Kind.AppEntry
+                "N" -> PinnedTarget.Kind.AppEntry
+                else -> PinnedTarget.Kind.CloneApp
             },
             alias,
             user,

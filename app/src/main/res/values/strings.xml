@@ -77,9 +77,10 @@
     <string name="pause_in_game_mode_summary">系统进入游戏模式时暂停模块增强，退出后自动启用</string>
     <string name="entry_group_tools">工具</string>
     <string name="entry_group_shortcuts">快捷入口</string>
+    <string name="entry_group_cloned_apps">分身应用</string>
     <string name="entry_group_apps">应用</string>
     <string name="sidebar_catalog_loading">正在读取侧边栏目录</string>
-    <string name="sidebar_catalog_loading_summary">读取当前可用的工具与快捷入口</string>
+    <string name="sidebar_catalog_loading_summary">读取当前可用的工具、快捷入口和分身应用</string>
     <string name="sidebar_catalog_unavailable">侧边栏目录暂不可用</string>
     <string name="sidebar_catalog_retry_summary">请确认智能侧边栏已开启且模块作用域生效，点此重试</string>
     <string name="retry_action">重试</string>

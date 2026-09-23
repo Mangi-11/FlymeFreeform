@@ -302,7 +302,13 @@ internal fun PinnedAppsScreen(
             val groups = remember(candidates) {
                 listOf(
                     R.string.entry_group_tools to candidates.filter { (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.Tool },
-                    R.string.entry_group_shortcuts to candidates.filter { it.target is PinnedTarget.Sidebar && it.target.kind != PinnedTarget.Kind.Tool },
+                    R.string.entry_group_shortcuts to candidates.filter {
+                        val kind = (it.target as? PinnedTarget.Sidebar)?.kind
+                        kind == PinnedTarget.Kind.Shortcut || kind == PinnedTarget.Kind.AppEntry
+                    },
+                    R.string.entry_group_cloned_apps to candidates.filter {
+                        (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.CloneApp
+                    },
                     R.string.entry_group_apps to candidates.filter { it.target is PinnedTarget.App },
                 ).filter { it.second.isNotEmpty() }
             }

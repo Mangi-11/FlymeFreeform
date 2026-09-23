@@ -115,12 +115,21 @@ internal class ColorOsSidebarEntryEndpoint(
                     finish(request)
                     return true
                 }
-                val dispatched = entries.launch(target)
                 execute(request) {
-                    send(request, SidebarEntryProtocol.message(
-                        if (dispatched) SidebarEntryProtocol.DISPATCHED else SidebarEntryProtocol.FAILED, request.id,
-                    ))
-                    handler.post { finish(request) }
+                    val bean = entries.resolve(target)
+                    handler.post {
+                        if (current !== request || !request.active.get()) return@post
+                        try {
+                            val dispatched = bean != null && SystemClock.uptimeMillis() < request.deadline &&
+                                launchAllowed(target) && entries.sidebarHidden() && entries.launch(target, bean)
+                            execute(request) {
+                                send(request, SidebarEntryProtocol.message(
+                                    if (dispatched) SidebarEntryProtocol.DISPATCHED else SidebarEntryProtocol.FAILED, request.id,
+                                ))
+                                handler.post { finish(request) }
+                            }
+                        } catch (exception: Exception) { report(exception); finish(request) }
+                    }
                 }
                 return true
             }

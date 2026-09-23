@@ -12,6 +12,7 @@ class PinnedTargetCodecTest {
             PinnedTarget.Sidebar(PinnedTarget.Kind.Tool, "capture", 0),
             PinnedTarget.Sidebar(PinnedTarget.Kind.Shortcut, "com.example_记事|a/b#999", 10),
             PinnedTarget.Sidebar(PinnedTarget.Kind.AppEntry, "com.example#com.example.Note", 0),
+            PinnedTarget.Sidebar(PinnedTarget.Kind.CloneApp, "com.example#com.example.Main#999", 0),
         )
         assertEquals(targets, PinnedTargetCodec.decodeList(PinnedTargetCodec.encodeList(targets)))
     }
@@ -32,6 +33,7 @@ class PinnedTargetCodecTest {
             PinnedTarget.Sidebar(PinnedTarget.Kind.Tool, "same", 0),
             PinnedTarget.Sidebar(PinnedTarget.Kind.Shortcut, "same", 0),
             PinnedTarget.Sidebar(PinnedTarget.Kind.Tool, "same", 10),
+            PinnedTarget.Sidebar(PinnedTarget.Kind.CloneApp, "same", 0),
         )
         assertEquals(targets, PinnedTargetCodec.normalize(targets + targets))
     }
