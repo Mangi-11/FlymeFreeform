@@ -95,6 +95,7 @@ internal fun ControlScreen(
     onRadialMenuChange: (RadialMenuSettings) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    onHandleDoubleTapCloseEnabledChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onPreventMistouchInLandscapeChange: (Boolean) -> Unit,
@@ -193,6 +194,7 @@ internal fun ControlScreen(
                             onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                             onHandleSwipeUpToMiniEnabledChange =
                                 onHandleSwipeUpToMiniEnabledChange,
+                            onHandleDoubleTapCloseEnabledChange = onHandleDoubleTapCloseEnabledChange,
                         )
                     }
                     item(key = "environment") {
@@ -284,6 +286,7 @@ private fun WindowInteractionCard(
     state: FrameworkConnectionState,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    onHandleDoubleTapCloseEnabledChange: (Boolean) -> Unit,
 ) {
     val modes = OutsideTapCloseMode.entries
     val items =
@@ -303,6 +306,14 @@ private fun WindowInteractionCard(
             onSelectedIndexChange = { index ->
                 modes.getOrNull(index)?.let(onOutsideTapCloseModeChange)
             },
+        )
+        SwitchPreference(
+            checked = state.settings.handleDoubleTapCloseEnabled,
+            onCheckedChange = onHandleDoubleTapCloseEnabledChange,
+            title = stringResource(R.string.handle_double_tap_close_title),
+            summary = stringResource(R.string.handle_double_tap_close_summary),
+            enabled = state.canChangeSettings,
+            startAction = { PreferenceIcon(Icons.Rounded.TouchApp, state.canChangeSettings) },
         )
         SwitchPreference(
             checked = state.settings.handleSwipeUpToMiniEnabled,

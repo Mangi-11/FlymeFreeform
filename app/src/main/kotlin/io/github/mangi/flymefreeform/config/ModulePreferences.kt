@@ -10,6 +10,7 @@ internal object ModulePreferences {
     const val KEY_CORNER_PINS = "corner_pins_v1"
     const val KEY_OUTSIDE_TAP_CLOSE_MODE = "outside_tap_close_mode_v1"
     const val KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED = "handle_swipe_up_to_mini_enabled"
+    const val KEY_HANDLE_DOUBLE_TAP_CLOSE_ENABLED = "handle_double_tap_close_enabled"
     const val KEY_PAUSE_IN_LANDSCAPE = "pause_in_landscape"
     const val KEY_PAUSE_IN_GAME_MODE = "pause_in_game_mode"
     const val KEY_PREVENT_MISTOUCH_IN_LANDSCAPE = "prevent_mistouch_in_landscape"
@@ -20,6 +21,7 @@ internal object ModulePreferences {
     const val DEFAULT_CORNER_TRIGGER_RANGE_DP = 84
     val DEFAULT_OUTSIDE_TAP_CLOSE_MODE = OutsideTapCloseMode.SingleTap
     const val DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED = true
+    const val DEFAULT_HANDLE_DOUBLE_TAP_CLOSE_ENABLED = false
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
     const val MIN_CORNER_TRIGGER_RANGE_DP = 24

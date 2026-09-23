@@ -70,6 +70,9 @@ internal class FrameworkConnectionRepository {
     fun setHandleSwipeUpToMiniEnabled(enabled: Boolean) =
         updateSettings { it.copy(handleSwipeUpToMiniEnabled = enabled) }
 
+    fun setHandleDoubleTapCloseEnabled(enabled: Boolean) =
+        updateSettings { it.copy(handleDoubleTapCloseEnabled = enabled) }
+
     fun setPauseInLandscape(enabled: Boolean) =
         updateSettings { it.copy(pauseInLandscape = enabled) }
 

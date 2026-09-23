@@ -35,6 +35,7 @@ internal fun FlymeFreeformNavHost(
     onRadialMenuChange: (RadialMenuSettings) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    onHandleDoubleTapCloseEnabledChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onPreventMistouchInLandscapeChange: (Boolean) -> Unit,
@@ -76,6 +77,7 @@ internal fun FlymeFreeformNavHost(
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,
+                        onHandleDoubleTapCloseEnabledChange = onHandleDoubleTapCloseEnabledChange,
                         onPauseInLandscapeChange = onPauseInLandscapeChange,
                         onPauseInGameModeChange = onPauseInGameModeChange,
                         onPreventMistouchInLandscapeChange = onPreventMistouchInLandscapeChange,

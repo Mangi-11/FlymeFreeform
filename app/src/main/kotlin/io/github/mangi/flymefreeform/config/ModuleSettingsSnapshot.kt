@@ -15,6 +15,8 @@ internal data class ModuleSettingsSnapshot(
         ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
     val handleSwipeUpToMiniEnabled: Boolean =
         ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
+    val handleDoubleTapCloseEnabled: Boolean =
+        ModulePreferences.DEFAULT_HANDLE_DOUBLE_TAP_CLOSE_ENABLED,
     val pauseInLandscape: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_LANDSCAPE,
     val pauseInGameMode: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_GAME_MODE,
     val preventMistouchInLandscape: Boolean = ModulePreferences.DEFAULT_PREVENT_MISTOUCH,
@@ -53,6 +55,10 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(
                 ModulePreferences.KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
                 handleSwipeUpToMiniEnabled,
+            )
+            .putBoolean(
+                ModulePreferences.KEY_HANDLE_DOUBLE_TAP_CLOSE_ENABLED,
+                handleDoubleTapCloseEnabled,
             )
         if (pinsSaved) {
             editor.putString(
@@ -127,6 +133,10 @@ internal data class ModuleSettingsSnapshot(
                 pinnedComponents = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
+                handleDoubleTapCloseEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_HANDLE_DOUBLE_TAP_CLOSE_ENABLED,
+                    ModulePreferences.DEFAULT_HANDLE_DOUBLE_TAP_CLOSE_ENABLED,
+                ),
                 preventMistouchInLandscape = preferences.getBoolean(
                     ModulePreferences.KEY_PREVENT_MISTOUCH_IN_LANDSCAPE,
                     ModulePreferences.DEFAULT_PREVENT_MISTOUCH,

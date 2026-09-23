@@ -18,6 +18,7 @@ internal class SystemServerHookInstaller(
     fun install(classLoader: ClassLoader) {
         OutsideTapCloseHookInstaller(module, configuration, environment).install(classLoader)
         HandleSwipeUpHookInstaller(module, configuration, environment).install(classLoader)
+        HandleDoubleTapCloseHookInstaller(module, configuration, environment).install(classLoader)
         try {
             val controllerClass = classLoader.loadClass(FLEXIBLE_TASK_CONTROLLER_CLASS)
             val systemReady = controllerClass.getDeclaredMethod("systemReady", Boolean::class.javaPrimitiveType)

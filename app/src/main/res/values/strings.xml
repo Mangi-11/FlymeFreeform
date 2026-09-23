@@ -49,6 +49,8 @@
     <string name="outside_tap_mode_disabled">不执行</string>
     <string name="outside_tap_mode_single">单击关闭</string>
     <string name="outside_tap_mode_double">双击关闭</string>
+    <string name="handle_double_tap_close_title">双击小横条快速关闭</string>
+    <string name="handle_double_tap_close_summary">双击普通小窗底部的小横条，快速关闭当前小窗</string>
     <string name="handle_swipe_up_to_mini_title">快速上滑切换为迷你窗</string>
     <string name="handle_swipe_up_to_mini_summary">在普通小窗底部横条快速向上滑，切换为迷你小窗</string>
 

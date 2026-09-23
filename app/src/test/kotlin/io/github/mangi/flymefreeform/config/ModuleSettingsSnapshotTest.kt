@@ -24,6 +24,7 @@ class ModuleSettingsSnapshotTest {
         assertEquals(84, snapshot.cornerTriggerRangeDp)
         assertEquals(OutsideTapCloseMode.SingleTap, snapshot.outsideTapCloseMode)
         assertTrue(snapshot.handleSwipeUpToMiniEnabled)
+        assertFalse(snapshot.handleDoubleTapCloseEnabled)
         assertTrue(snapshot.pauseInLandscape)
         assertTrue(snapshot.pauseInGameMode)
         assertFalse(snapshot.preventMistouchInLandscape)
@@ -60,6 +61,20 @@ class ModuleSettingsSnapshotTest {
 
         assertEquals(OutsideTapCloseMode.DoubleTap, restored.outsideTapCloseMode)
         assertFalse(restored.handleSwipeUpToMiniEnabled)
+    }
+
+    @Test
+    fun handleDoubleTapCloseRoundTripsIndependently() {
+        for (enabled in listOf(false, true)) {
+            val preferences = InMemoryPreferences()
+            val expected = ModuleSettingsSnapshot(
+                handleDoubleTapCloseEnabled = enabled,
+                handleSwipeUpToMiniEnabled = !enabled,
+                outsideTapCloseMode = OutsideTapCloseMode.Disabled,
+            )
+            expected.writeTo(preferences.edit()).commit()
+            assertEquals(expected, ModuleSettingsSnapshot.readFrom(preferences))
+        }
     }
 
     @Test
