@@ -82,11 +82,13 @@ internal class ColorOsFreeformCoordinator(
     @Volatile
     private var pointerGeneration = 0L
 
-    /** 当前触摸序列是否以角落按下开始；只由输入线程读写，未开始的触摸完全不进热路径。 */
+    /** 输入线程跟踪角落起始的触摸序列；主线程注销监听时复位，非角落触摸不再复制或排队。 */
     @Volatile
     private var pointerTracking = false
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
+    // 主线程更新，输入线程在复制事件前读取，用于角落触发区预筛选。
+    @Volatile
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
     private var activeGestureConfig: CornerGestureConfig? = null
