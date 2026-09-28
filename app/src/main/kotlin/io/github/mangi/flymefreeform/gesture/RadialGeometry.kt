@@ -3,6 +3,7 @@ package io.github.mangi.flymefreeform.gesture
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.sin
 
@@ -78,4 +79,25 @@ internal object RadialGeometry {
 
     fun polarAngle(layout: RadialLayout, point: GesturePoint): Float =
         atan2(point.y - layout.origin.y, point.x - layout.origin.x)
+
+    /**
+     * 手指对每个条目的连续悬停强度（0~1）：二维高斯随距离平滑衰减，
+     * 手指停在两项之间时两边同时被点亮，滑过时强度连续变化而不跳变。
+     */
+    fun hoverIntensities(
+        layout: RadialLayout,
+        x: Float,
+        y: Float,
+        iconDiameter: Float,
+    ): List<Float> {
+        if (layout.itemCenters.isEmpty()) return emptyList()
+        val radius = (iconDiameter / 2f).coerceAtLeast(1f)
+        val horizontalScale = (radius * 1.22f).coerceAtLeast(1f)
+        val verticalScale = (radius * 0.92f).coerceAtLeast(1f)
+        return layout.itemCenters.map { center ->
+            val dx = (x - center.x) / horizontalScale
+            val dy = (y - center.y) / verticalScale
+            exp(-1.18f * (dx * dx + dy * dy)).coerceIn(0f, 1f)
+        }
+    }
 }

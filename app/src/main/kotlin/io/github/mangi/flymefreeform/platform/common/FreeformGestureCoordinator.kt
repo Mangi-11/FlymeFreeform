@@ -1,4 +1,4 @@
-package io.github.mangi.flymefreeform.platform.coloros
+package io.github.mangi.flymefreeform.platform.common
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -28,14 +28,14 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /** system_server 中的唯一长期所有者：WMS 指针监听、Overlay、目录缓存与启动适配。 */
-internal class ColorOsFreeformCoordinator(
-    private val controller: Any,
+internal class FreeformGestureCoordinator(
+    private val components: FreeformPlatformComponents,
     private val classLoader: ClassLoader,
     private val configuration: ProcessConfiguration,
     private val environmentState: ModuleEnvironmentState,
     private val logger: (priority: Int, code: String, throwable: Throwable?) -> Unit,
 ) : CornerRadialOverlayView.Listener {
-    private val context = readField(controller, "mContext") as Context
+    private val context: Context = components.context
     private val handler = Handler(Looper.getMainLooper())
     private val catalogExecutor =
         ThreadPoolExecutor(
@@ -50,10 +50,10 @@ internal class ColorOsFreeformCoordinator(
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val gestureEngine = CornerGestureEngine()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
-    private val launcher = ColorOsFreeformLauncher(context)
-    private val sidebar = ColorOsSidebarClient(context, handler, logger)
+    private val launcher = components.launcher
+    private val morePanel = components.createMorePanel(handler)
     private val appCatalog =
-        ColorOsAppCatalog(context, catalogExecutor, logger) { snapshot ->
+        AppCatalog(context, catalogExecutor, components.iconShaper) { snapshot ->
             handler.post {
                 // 后台任务完成时配置可能已再次变化，旧结果不得覆盖新外观。
                 if (snapshot.matches(lastSettings)) {
@@ -127,7 +127,7 @@ internal class ColorOsFreeformCoordinator(
                 appCatalog.refresh(settings, reloadApps = resuming || selectionChanged || catalogSnapshot.radialApps.isEmpty())
             }
         } else {
-            sidebar.cancel()
+            morePanel.cancel()
             unregisterPointerListener()
             activeEnvironmentApproved = false
             activeGestureConfig = null
@@ -160,8 +160,8 @@ internal class ColorOsFreeformCoordinator(
                         else -> null
                     }
                 }
-            val windowManagerService = readWindowManagerService()
-            val register = findMethod(windowManagerService.javaClass, "registerPointerEventListener", 2)
+            val windowManagerService = components.windowAccess.windowManagerService()
+            val register = windowManagerService.javaClass.findMethod("registerPointerEventListener", 2)
             register.invoke(windowManagerService, listener, Display.DEFAULT_DISPLAY)
             pointerListener = listener
             pointerRegistered = true
@@ -229,8 +229,8 @@ internal class ColorOsFreeformCoordinator(
         val listener = pointerListener ?: return
         pointerRegistered = false
         try {
-            val windowManagerService = readWindowManagerService()
-            val unregister = findMethod(windowManagerService.javaClass, "unregisterPointerEventListener", 2)
+            val windowManagerService = components.windowAccess.windowManagerService()
+            val unregister = windowManagerService.javaClass.findMethod("unregisterPointerEventListener", 2)
             unregister.invoke(windowManagerService, listener, Display.DEFAULT_DISPLAY)
         } catch (exception: ReflectiveOperationException) {
             logger(Log.WARN, "SYSTEM_POINTER_LISTENER_REMOVE_FAILED", exception)
@@ -380,7 +380,7 @@ internal class ColorOsFreeformCoordinator(
         val generation = pointerGeneration
         activeEnvironmentApproved = false
         gestureEngine.cancel()
-        removeOverlay()
+        // 收层交给悬浮层自己决定：粒子溶解要播完才移除，没有溶解时它会立刻回调。
         handler.post {
             if (generation == pointerGeneration) launchCommittedApp(entry)
         }
@@ -406,7 +406,7 @@ internal class ColorOsFreeformCoordinator(
         morePanelActive = true
         activeEnvironmentApproved = false
         gestureEngine.cancel()
-        if (!sidebar.open(
+        if (!morePanel.open(
                 beforeOpen = {
                     if (overlay === view && lastSettings.enabled && isGestureEnvironmentAllowed()) {
                         view.retainBackdropForPanel()
@@ -415,12 +415,12 @@ internal class ColorOsFreeformCoordinator(
                 },
                 onResult = { result ->
                     if (overlay === view) {
-                        if (result == ColorOsSidebarClient.Outcome.Fallback && lastSettings.enabled && isGestureEnvironmentAllowed() &&
+                        if (result == MorePanelOutcome.Fallback && lastSettings.enabled && isGestureEnvironmentAllowed() &&
                             context.getSystemService(android.os.UserManager::class.java)?.isUserForeground == true
                         ) {
                             view.visibility = android.view.View.VISIBLE
                             showBuiltInMorePanel(view)
-                        } else if (result != ColorOsSidebarClient.Outcome.Shown) removeOverlay()
+                        } else if (result != MorePanelOutcome.Shown) removeOverlay()
                     }
                 },
                 onExitStarted = { if (overlay === view) view.beginBackdropExit() },
@@ -445,6 +445,18 @@ internal class ColorOsFreeformCoordinator(
     }
 
     override fun onDismissRequested() {
+        endOverlaySession()
+    }
+
+    override fun onDissolveFinished() {
+        endOverlaySession()
+    }
+
+    override fun onDissolveFailed(throwable: Throwable) {
+        logOverlayFailure("SYSTEM_DISSOLVE_FAILED", throwable)
+    }
+
+    private fun endOverlaySession() {
         activeEnvironmentApproved = false
         gestureEngine.cancel()
         removeOverlay()
@@ -490,7 +502,7 @@ internal class ColorOsFreeformCoordinator(
     private fun removeOverlay() {
         val view = overlay ?: return
         overlay = null
-        if (sidebar.isPending) sidebar.cancel()
+        if (morePanel.isPending) morePanel.cancel()
         morePanelActive = false
         val cleanupFailure = view.disposeOverlay()
         try {
@@ -513,67 +525,11 @@ internal class ColorOsFreeformCoordinator(
     private fun isDynamicEnvironmentAllowed(): Boolean = environmentState.isGestureAllowed()
 
     private fun isCriticalSystemUiForeground(): Boolean {
-        focusedWindowPackage()?.let { packageName ->
-            if (packageName in CRITICAL_PACKAGES) return true
+        components.windowAccess.focusedWindowPackage()?.let { packageName ->
+            if (packageName in components.criticalPackages) return true
         }
-        return try {
-            val atms = readField(controller, "mAtms") ?: return false
-            val root = readField(atms, "mRootWindowContainer") ?: return false
-            val task = findMethod(root.javaClass, "getTopDisplayFocusedRootTask", 0).invoke(root) ?: return false
-            val activity =
-                findMethod(task.javaClass, "topRunningActivity", 0).invoke(task) ?: return false
-            val packageName = readField(activity, "packageName") as? String ?: return false
-            packageName in CRITICAL_PACKAGES
-        } catch (_: ReflectiveOperationException) {
-            false
-        } catch (_: RuntimeException) {
-            false
-        }
-    }
-
-    private fun focusedWindowPackage(): String? =
-        try {
-            val windowManagerService = readWindowManagerService()
-            val root = readField(windowManagerService, "mRoot") ?: return null
-            val display =
-                findMethod(root.javaClass, "getTopFocusedDisplayContent", 0).invoke(root) ?: return null
-            val window = readField(display, "mCurrentFocus") ?: return null
-            findMethod(window.javaClass, "getOwningPackage", 0).invoke(window) as? String
-        } catch (_: ReflectiveOperationException) {
-            null
-        } catch (_: RuntimeException) {
-            null
-        }
-
-    private fun readWindowManagerService(): Any {
-        val atms = readField(controller, "mAtms") ?: throw NoSuchFieldException("mAtms")
-        return readField(atms, "mWindowManager") ?: throw NoSuchFieldException("mWindowManager")
-    }
-
-    private fun readField(instance: Any, name: String): Any? {
-        var current: Class<*>? = instance.javaClass
-        while (current != null) {
-            try {
-                return current.getDeclaredField(name).also { it.isAccessible = true }.get(instance)
-            } catch (_: NoSuchFieldException) {
-                current = current.superclass
-            }
-        }
-        return null
-    }
-
-    private fun findMethod(type: Class<*>, name: String, parameterCount: Int): java.lang.reflect.Method {
-        var current: Class<*>? = type
-        while (current != null) {
-            current.declaredMethods.firstOrNull { method ->
-                method.name == name && method.parameterCount == parameterCount
-            }?.let { method ->
-                method.isAccessible = true
-                return method
-            }
-            current = current.superclass
-        }
-        throw NoSuchMethodException(name)
+        val taskPackage = components.windowAccess.topRootTaskPackage() ?: return false
+        return taskPackage in components.criticalPackages
     }
 
     private data class QueuedPointerEvent(val event: MotionEvent, val generation: Long)
@@ -581,12 +537,5 @@ internal class ColorOsFreeformCoordinator(
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
-        val CRITICAL_PACKAGES =
-            setOf(
-                "com.android.systemui",
-                "com.android.permissioncontroller",
-                "com.google.android.permissioncontroller",
-                "com.android.packageinstaller",
-            )
     }
 }

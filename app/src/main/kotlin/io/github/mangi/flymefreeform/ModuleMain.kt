@@ -4,9 +4,9 @@ import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
-import io.github.mangi.flymefreeform.hook.LauncherHookInstaller
 import io.github.mangi.flymefreeform.hook.ProcessConfiguration
 import io.github.mangi.flymefreeform.hook.SidebarHookInstaller
+import io.github.mangi.flymefreeform.platform.PlatformRouting
 import io.github.mangi.flymefreeform.platform.coloros.ColorOsSidebarTarget
 import io.github.mangi.flymefreeform.hook.SystemServerHookInstaller
 import io.github.mangi.flymefreeform.hook.SystemUiHookInstaller
@@ -67,6 +67,7 @@ class ModuleMain : XposedModule() {
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         val settings = configuration ?: return
         if (hooksInstalled) return
+        val platform = PlatformRouting.current(param.classLoader)
         when {
             processName == ColorOsSidebarTarget.PROCESS_NAME && param.packageName == ColorOsSidebarTarget.PACKAGE_NAME -> {
                 hooksInstalled = true
@@ -78,9 +79,9 @@ class ModuleMain : XposedModule() {
                 SystemUiHookInstaller(this, settings).install(param.classLoader)
             }
 
-            processName == PROCESS_LAUNCHER && param.packageName == PROCESS_LAUNCHER -> {
+            processName == platform.launcherProcessName && param.packageName == platform.launcherProcessName -> {
                 hooksInstalled = true
-                LauncherHookInstaller(this, settings).install(param.classLoader)
+                platform.installLauncherHooks(this, settings, param.classLoader)
             }
         }
     }
@@ -93,7 +94,7 @@ class ModuleMain : XposedModule() {
     private fun isExpectedProcess(param: XposedModuleInterface.ModuleLoadedParam): Boolean =
         param.isSystemServer ||
             param.processName == PROCESS_SYSTEM_UI ||
-            param.processName == PROCESS_LAUNCHER ||
+            param.processName == PlatformRouting.current().launcherProcessName ||
             param.processName == ColorOsSidebarTarget.PROCESS_NAME
 
     private fun disableForConfigurationFailure(code: String, exception: RuntimeException) {
@@ -105,6 +106,5 @@ class ModuleMain : XposedModule() {
     private companion object {
         const val TAG = "FlymeFreeform"
         const val PROCESS_SYSTEM_UI = "com.android.systemui"
-        const val PROCESS_LAUNCHER = "com.android.launcher"
     }
 }

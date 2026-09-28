@@ -54,4 +54,37 @@ class RadialGeometryTest {
         assertTrue(right.itemCenters.last().y > right.itemCenters.dropLast(1).maxOf { it.y })
     }
 
+    @Test
+    fun hoverIntensityPeaksOnTheNearestItemAndFadesWithDistance() {
+        val layout = RadialGeometry.layout(CornerSide.Left, 1000f, 2000f, 400f, 7)
+        val target = layout.itemCenters[2]
+        val onTarget = RadialGeometry.hoverIntensities(layout, target.x, target.y, 88f)
+        assertEquals(1f, onTarget[2], 0.001f)
+        // 手指压在目标上时，邻居只被轻微点亮，远处条目几乎为零。
+        assertTrue(onTarget[1] > 0f && onTarget[1] < 0.6f)
+        assertTrue(onTarget[5] < 0.05f)
+
+        // 手指移到两项之间：两边都被点亮，且都明显高于远端条目。
+        val between = GesturePoint((target.x + layout.itemCenters[1].x) / 2f, (target.y + layout.itemCenters[1].y) / 2f)
+        val midpoint = RadialGeometry.hoverIntensities(layout, between.x, between.y, 88f)
+        assertTrue(midpoint[1] > 0.2f && midpoint[2] > 0.2f)
+        assertTrue(midpoint[1] < 1f && midpoint[2] < 1f)
+    }
+
+    @Test
+    fun hoverIntensityIsMonotonicAsTheFingerApproaches() {
+        val layout = RadialGeometry.layout(CornerSide.Left, 1000f, 2000f, 400f, 7)
+        val target = layout.itemCenters[3]
+        val far = RadialGeometry.hoverIntensities(layout, target.x + 160f, target.y, 88f)[3]
+        val near = RadialGeometry.hoverIntensities(layout, target.x + 40f, target.y, 88f)[3]
+        val on = RadialGeometry.hoverIntensities(layout, target.x, target.y, 88f)[3]
+        assertTrue(far < near)
+        assertTrue(near < on)
+    }
+
+    @Test
+    fun hoverIntensitiesAreEmptyWhenThereAreNoItems() {
+        val layout = RadialGeometry.layout(CornerSide.Left, 400f, 890f, 242f, 0)
+        assertTrue(RadialGeometry.hoverIntensities(layout, 0f, 890f, 88f).isEmpty())
+    }
 }

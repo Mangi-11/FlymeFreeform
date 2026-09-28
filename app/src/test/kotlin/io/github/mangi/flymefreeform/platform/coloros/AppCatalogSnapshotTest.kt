@@ -1,6 +1,7 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
+import io.github.mangi.flymefreeform.platform.common.AppCatalogSnapshot
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

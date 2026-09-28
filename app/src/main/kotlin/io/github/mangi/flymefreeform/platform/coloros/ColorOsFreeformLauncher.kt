@@ -7,12 +7,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import io.github.mangi.flymefreeform.platform.common.FreeformLauncher
+import io.github.mangi.flymefreeform.platform.common.FreeformLaunchResult
 
 /** 每次提交都重新校验组件，并仅携带 ColorOS 自由窗参数启动，不退化为普通全屏启动。 */
 internal class ColorOsFreeformLauncher(
     private val context: Context,
-) {
-    fun launch(component: ComponentName): FreeformLaunchResult {
+) : FreeformLauncher {
+    override fun launch(component: ComponentName): FreeformLaunchResult {
         if (!isLaunchable(component)) return FreeformLaunchResult.TargetUnavailable
 
         val intent =
@@ -73,15 +75,4 @@ internal class ColorOsFreeformLauncher(
         const val WINDOWING_MODE_KEY = "android.activity.windowingMode"
         const val ZOOM_FLAGS_KEY = "android:activity.mZoomLaunchFlags"
     }
-}
-
-internal sealed interface FreeformLaunchResult {
-    data object Started : FreeformLaunchResult
-
-    data object TargetUnavailable : FreeformLaunchResult
-
-    data class Failed(
-        val diagnosticCode: String,
-        val cause: Throwable,
-    ) : FreeformLaunchResult
 }

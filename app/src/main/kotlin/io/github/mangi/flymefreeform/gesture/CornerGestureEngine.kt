@@ -38,7 +38,6 @@ internal data class CornerGestureConfig(
     val triggerRadius: Float,
     val inwardThreshold: Float,
     val upwardThreshold: Float,
-    val reverseTolerance: Float,
     val leftEnabled: Boolean,
     val rightEnabled: Boolean,
 )
@@ -61,7 +60,6 @@ internal object AdaptiveCornerGestureConfig {
             triggerRadius = triggerRadius,
             inwardThreshold = max(touchSlop * INWARD_SLOP_MULTIPLIER, safeDensity * INWARD_DP),
             upwardThreshold = max(touchSlop * UPWARD_SLOP_MULTIPLIER, safeDensity * UPWARD_DP),
-            reverseTolerance = max(touchSlop, safeDensity * REVERSE_TOLERANCE_DP),
             leftEnabled = leftEnabled,
             rightEnabled = rightEnabled,
         )
@@ -71,7 +69,6 @@ internal object AdaptiveCornerGestureConfig {
     private const val UPWARD_SLOP_MULTIPLIER = 0.50f
     private const val INWARD_DP = 14f
     private const val UPWARD_DP = 4f
-    private const val REVERSE_TOLERANCE_DP = 8f
 }
 
 /** 单指角落手势状态机；不持有 MotionEvent，便于跨进程入口复用与单元测试。 */
@@ -110,9 +107,6 @@ internal class CornerGestureEngine {
 
         val inward = if (activeSide == CornerSide.Left) x - originX else originX - x
         val upward = originY - y
-        if (inward < -config.reverseTolerance || upward < -config.reverseTolerance) {
-            return cancel()
-        }
         if (!claimed) {
             if (inward < config.inwardThreshold || upward < config.upwardThreshold) {
                 return GestureAction.PassThrough
@@ -122,6 +116,7 @@ internal class CornerGestureEngine {
             return GestureAction.Activate(activeSide, originX, originY, x, y)
         }
 
+        // 展开后只跟随手指，不再因回缩撤回菜单；由抬起时的选中结果决定去留。
         phase = GesturePhase.Selecting
         return GestureAction.Update(activeSide, x, y)
     }

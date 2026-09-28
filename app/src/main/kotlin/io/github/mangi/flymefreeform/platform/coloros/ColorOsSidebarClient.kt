@@ -22,6 +22,8 @@ import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
+import io.github.mangi.flymefreeform.platform.common.MorePanelDelegate
+import io.github.mangi.flymefreeform.platform.common.MorePanelOutcome
 import io.github.mangi.flymefreeform.window.MorePanelSession
 import java.util.UUID
 import java.lang.reflect.InvocationTargetException
@@ -37,9 +39,7 @@ internal class ColorOsSidebarClient(
     private val context: Context,
     private val handler: Handler,
     private val log: (Int, String, Throwable?) -> Unit,
-) {
-    enum class Outcome { Shown, Fallback, Abandoned }
-
+) : MorePanelDelegate {
     private val worker =
         ThreadPoolExecutor(
             1, 1, 10L, TimeUnit.SECONDS, ArrayBlockingQueue(4),
@@ -51,10 +51,10 @@ internal class ColorOsSidebarClient(
     private val reply = Messenger(Handler(handler.looper, ::receive))
     private var lastFailureAt = -5_000L
 
-    val isPending: Boolean get() = current?.committed == false
+    override val isPending: Boolean get() = current?.committed == false
 
-    fun open(
-        beforeOpen: () -> Boolean, onResult: (Outcome) -> Unit,
+    override fun open(
+        beforeOpen: () -> Boolean, onResult: (MorePanelOutcome) -> Unit,
         onExitStarted: () -> Unit, onHideBackdrop: (() -> Unit) -> Unit, onClosed: () -> Unit,
     ): Boolean {
         if (current != null) return false
@@ -75,7 +75,7 @@ internal class ColorOsSidebarClient(
         return true
     }
 
-    fun cancel() {
+    override fun cancel() {
         val request = current ?: return
         if (request.committed) {
             if (request.closing) return
@@ -140,7 +140,7 @@ internal class ColorOsSidebarClient(
             if (request.committed && id == request.session.id &&
                 message.what in setOf(SidebarProtocol.CLEANED, SidebarProtocol.ABORTED)
             ) {
-                finish(request, Outcome.Abandoned)
+                finish(request, MorePanelOutcome.Abandoned)
                 return true
             }
             val now = SystemClock.uptimeMillis()
@@ -179,7 +179,7 @@ internal class ColorOsSidebarClient(
                 request.session.deadline = SystemClock.uptimeMillis() + SidebarProtocol.CLEANUP_TIMEOUT_MS
                 scheduleTimeout(request)
             }
-            MorePanelSession.Effect.Fallback -> finish(request, Outcome.Fallback)
+            MorePanelSession.Effect.Fallback -> finish(request, MorePanelOutcome.Fallback)
             MorePanelSession.Effect.Shown -> {
                 // 窗口存活期间保留服务绑定，避免原生常驻端 stopService 后 UIService 被销毁。
                 request.committed = true
@@ -187,9 +187,9 @@ internal class ColorOsSidebarClient(
                 val result = request.onResult
                 request.beforeOpen = null
                 request.onResult = null
-                cleanup("SIDEBAR_RESULT_HANDLING_FAILED") { result?.invoke(Outcome.Shown) }
+                cleanup("SIDEBAR_RESULT_HANDLING_FAILED") { result?.invoke(MorePanelOutcome.Shown) }
             }
-            MorePanelSession.Effect.Abandon -> finish(request, Outcome.Abandoned)
+            MorePanelSession.Effect.Abandon -> finish(request, MorePanelOutcome.Abandoned)
         }
     }
 
@@ -232,12 +232,12 @@ internal class ColorOsSidebarClient(
         handler.post {
             if (current !== request) return@post
             logFailure("SIDEBAR_TRANSPORT_FAILED", exception)
-            if (request.committed) finish(request, Outcome.Abandoned)
+            if (request.committed) finish(request, MorePanelOutcome.Abandoned)
             else apply(request, request.session.cancel(allowFallback = true))
         }
     }
 
-    private fun finish(request: Request, outcome: Outcome) {
+    private fun finish(request: Request, outcome: MorePanelOutcome) {
         if (current !== request) return
         current = null
         request.active.set(false)
@@ -296,7 +296,7 @@ internal class ColorOsSidebarClient(
     private inner class Request(
         val session: MorePanelSession,
         var beforeOpen: (() -> Boolean)?,
-        var onResult: ((Outcome) -> Unit)?,
+        var onResult: ((MorePanelOutcome) -> Unit)?,
         var onExitStarted: (() -> Unit)?,
         var onHideBackdrop: ((() -> Unit) -> Unit)?,
         var onClosed: (() -> Unit)?,
@@ -316,7 +316,7 @@ internal class ColorOsSidebarClient(
             if (current === this) {
                 if (committed) {
                     logFailure("SIDEBAR_CLEANUP_TIMEOUT")
-                    finish(this, Outcome.Abandoned)
+                    finish(this, MorePanelOutcome.Abandoned)
                     return@Runnable
                 }
                 logFailure(
@@ -333,7 +333,7 @@ internal class ColorOsSidebarClient(
             handler.post {
                 // Messenger Binder 随侧边栏进程死亡，原进程的窗口也由系统回收。
                 if (current === this) {
-                    if (committed) finish(this, Outcome.Abandoned)
+                    if (committed) finish(this, MorePanelOutcome.Abandoned)
                     else apply(this, session.cleaned(session.id))
                 }
             }
@@ -367,14 +367,14 @@ internal class ColorOsSidebarClient(
 
             override fun onServiceDisconnected(name: ComponentName) {
                 if (current === this@Request) {
-                    if (committed) finish(this@Request, Outcome.Abandoned)
+                    if (committed) finish(this@Request, MorePanelOutcome.Abandoned)
                     else apply(this@Request, session.cancel(allowFallback = true))
                 }
             }
 
             override fun onBindingDied(name: ComponentName) {
                 if (current === this@Request) {
-                    if (committed) finish(this@Request, Outcome.Abandoned)
+                    if (committed) finish(this@Request, MorePanelOutcome.Abandoned)
                     else apply(this@Request, session.cancel(allowFallback = true))
                 }
             }

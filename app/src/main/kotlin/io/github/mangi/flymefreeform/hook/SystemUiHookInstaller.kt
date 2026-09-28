@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
+import io.github.mangi.flymefreeform.platform.PlatformRouting
 import java.util.concurrent.atomic.AtomicBoolean
 
 @SuppressLint("PrivateApi")
@@ -17,7 +18,8 @@ internal class SystemUiHookInstaller(
 
     fun install(classLoader: ClassLoader) {
         try {
-            val applicationClass = classLoader.loadClass(SYSTEM_UI_APPLICATION_CLASS)
+            val applicationClass =
+                classLoader.loadClass(PlatformRouting.current(classLoader).systemUiApplicationClassName)
             val onCreate = applicationClass.getDeclaredMethod("onCreate")
             module
                 .hook(onCreate)
@@ -56,6 +58,5 @@ internal class SystemUiHookInstaller(
 
     private companion object {
         const val TAG = "FlymeFreeform"
-        const val SYSTEM_UI_APPLICATION_CLASS = "com.android.systemui.SystemUIApplication"
     }
 }

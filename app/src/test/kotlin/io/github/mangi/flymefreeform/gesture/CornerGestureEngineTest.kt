@@ -13,7 +13,6 @@ class CornerGestureEngineTest {
             triggerRadius = 100f,
             inwardThreshold = 14f,
             upwardThreshold = 4f,
-            reverseTolerance = 8f,
             leftEnabled = true,
             rightEnabled = true,
         )
@@ -85,6 +84,20 @@ class CornerGestureEngineTest {
 
         assertTrue(engine.move(0, 2, 30f, 1980f, config) is GestureAction.Cancel)
         assertFalse(engine.isClaimed)
+    }
+
+    @Test
+    fun retractingAfterActivationKeepsMenuUntilRelease() {
+        val engine = CornerGestureEngine()
+        engine.down(0, 5f, 1995f, config)
+        assertTrue(engine.move(0, 1, 25f, 1985f, config) is GestureAction.Activate)
+
+        // 手指缩回角落不再撤回菜单，只更新位置；松手时才由选中结果决定去留。
+        assertTrue(engine.move(0, 1, -20f, 1995f, config) is GestureAction.Update)
+        assertTrue(engine.isClaimed)
+        val commit = engine.up(0)
+        assertTrue(commit is GestureAction.Commit)
+        assertEquals(null, (commit as GestureAction.Commit).selectedIndex)
     }
 
     @Test

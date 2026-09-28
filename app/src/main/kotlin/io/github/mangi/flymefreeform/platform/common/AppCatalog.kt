@@ -1,4 +1,4 @@
-package io.github.mangi.flymefreeform.platform.coloros
+package io.github.mangi.flymefreeform.platform.common
 
 import android.app.ActivityManager
 import android.content.ComponentName
@@ -11,6 +11,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
 import io.github.mangi.flymefreeform.apps.AppSelectionPolicy
+import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import java.text.Collator
 import java.util.Locale
@@ -33,15 +34,18 @@ internal data class AppCatalogSnapshot(
             this.settings.pinnedComponents == settings.pinnedComponents
 }
 
+/** 平台图标整形；ColorOS 用原生塑形，HyperOS 保持系统加载结果。 */
+internal fun interface RadialIconShaper {
+    fun shape(source: Drawable): Drawable
+}
+
 /** 目录查询只在后台执行；发布后的 Bitmap 与列表供手势热路径只读。 */
-internal class ColorOsAppCatalog(
+internal class AppCatalog(
     private val context: Context,
     private val executor: Executor,
-    logger: (Int, String, Throwable?) -> Unit,
+    private val iconShaper: RadialIconShaper?,
     private val publish: (AppCatalogSnapshot) -> Unit,
 ) {
-    private val iconRenderer = ColorOsRadialIconRenderer(context.resources, logger)
-
     private val contentRevision = AtomicLong()
     private var cachedContent: CatalogContent? = null // 仅目录工作线程访问。
 
@@ -60,14 +64,16 @@ internal class ColorOsAppCatalog(
                     loadContent(settings, revision) ?: return@execute
                 }
             cachedContent = content
+            val shaper = iconShaper
             val shapedRadial = content.radialApps.map { entry ->
                 val drawable = content.radialSources[entry.component]
-                if (drawable == null) entry else {
+                if (drawable == null || shaper == null) entry else {
                     try {
                         entry.copy(
-                            icon = iconRenderer
-                                .shapedIcon(drawable)
-                                .toBitmap(),
+                            icon =
+                                shaper
+                                    .shape(drawable)
+                                    .toBitmap(),
                         )
                     } catch (_: RuntimeException) {
                         entry
@@ -104,7 +110,7 @@ internal class ColorOsAppCatalog(
                 recent = recents,
                 all = alphabetical,
                 identity = RadialAppEntry::component,
-                limit = io.github.mangi.flymefreeform.config.ModulePreferences.MAX_PINNED_APPS,
+                limit = ModulePreferences.MAX_PINNED_APPS,
             )
         val excluded = radial.mapTo(HashSet(), RadialAppEntry::component)
         val panel =

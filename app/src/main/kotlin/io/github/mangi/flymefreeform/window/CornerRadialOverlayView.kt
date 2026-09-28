@@ -1,15 +1,22 @@
 package io.github.mangi.flymefreeform.window
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect as AndroidRect
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.RoundedCorner
 import android.view.WindowInsets
+import android.view.animation.PathInterpolator
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -56,6 +63,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.text.style.TextAlign
@@ -74,8 +82,8 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.mangi.flymefreeform.gesture.CornerSide
 import io.github.mangi.flymefreeform.gesture.RadialGeometry
 import io.github.mangi.flymefreeform.gesture.RadialLayout
-import io.github.mangi.flymefreeform.platform.coloros.AppCatalogSnapshot
-import io.github.mangi.flymefreeform.platform.coloros.RadialAppEntry
+import io.github.mangi.flymefreeform.platform.common.AppCatalogSnapshot
+import io.github.mangi.flymefreeform.platform.common.RadialAppEntry
 import io.github.mangi.flymefreeform.ui.theme.CornerOverlayTheme
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -85,6 +93,7 @@ import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 @SuppressLint("ViewConstructor")
@@ -99,6 +108,12 @@ internal class CornerRadialOverlayView(
 
         fun onDismissRequested()
 
+        /** 粒子溶解播完，悬浮层可以移除了。 */
+        fun onDissolveFinished()
+
+        /** 粒子溶解没能开始；不影响退场本身。 */
+        fun onDissolveFailed(throwable: Throwable)
+
         fun onCleanupFailed(throwable: Throwable)
     }
 
@@ -107,11 +122,16 @@ internal class CornerRadialOverlayView(
     private val metricsState = mutableStateOf<AdaptiveOverlayMetrics?>(null)
     private val layoutState = mutableStateOf(EMPTY_LAYOUT)
     private val selectedIndexState = mutableIntStateOf(NO_SELECTION)
+    private val hoverState = mutableStateOf<List<Float>>(emptyList())
     private val panelModeState = mutableStateOf(false)
     private val backdropOnlyState = mutableStateOf(false)
     private val backdropAlpha = mutableFloatStateOf(1f)
     private var backdropAnimator: ValueAnimator? = null
     private val exitRequestState = mutableStateOf<ExitRequest?>(null)
+    private val dissolveState = mutableStateOf<ParticleDissolve?>(null)
+    private val dissolveProgressState = mutableFloatStateOf(0f)
+    private var dissolveAnimator: ValueAnimator? = null
+    private val dissolvePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val entryProgress = Animatable(0f)
     private val handoffEntryProgress = mutableFloatStateOf(0f)
     private val handoffLayoutState = mutableStateOf(EMPTY_LAYOUT)
@@ -170,6 +190,7 @@ internal class CornerRadialOverlayView(
         panelImages = catalog.panelApps.associate { entry -> entry.component to entry.icon.asImageBitmap() }
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
+        hoverState.value = emptyList()
         handoffEntryProgress.floatValue = 0f
         handoffLayoutState.value = EMPTY_LAYOUT
         handoffMetricsState.value = null
@@ -215,6 +236,9 @@ internal class CornerRadialOverlayView(
     fun disposeOverlay(): Throwable? {
         if (disposed) return null
         disposed = true
+        dissolveAnimator?.cancel()
+        dissolveAnimator = null
+        dissolveState.value = null
         backdropAnimator?.cancel()
         backdropAnimator = null
         removeCallbacks(timeout)
@@ -253,9 +277,44 @@ internal class CornerRadialOverlayView(
         CornerOverlayTheme {
             val metrics = metricsState.value
             val layout = layoutState.value
-            if (metrics != null) {
-                OverlayContent(metrics = metrics, layout = layout)
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (metrics != null) {
+                    OverlayContent(metrics = metrics, layout = layout)
+                }
+                ParticleDissolveLayer(modifier = Modifier.fillMaxSize())
             }
+        }
+    }
+
+    /** 溶解层画在菜单之上；没有溶解任务时不产生任何绘制。 */
+    @Composable
+    private fun ParticleDissolveLayer(modifier: Modifier) {
+        val dissolve = dissolveState.value ?: return
+        val progress = dissolveProgressState.floatValue
+        androidx.compose.foundation.Canvas(modifier = modifier) {
+            drawDissolve(drawContext.canvas.nativeCanvas, dissolve, progress)
+        }
+    }
+
+    private fun drawDissolve(
+        canvas: Canvas,
+        dissolve: ParticleDissolve,
+        progress: Float,
+    ) {
+        val paint = dissolvePaint
+        dissolve.particles.forEach { particle ->
+            val time = ParticleDissolveMotion.particleTime(progress, particle.delay)
+            val alpha = ((particle.color ushr 24) * ParticleDissolveMotion.fade(time)).toInt()
+            val size = particle.size * ParticleDissolveMotion.shrink(time)
+            if (alpha <= 0 || size <= 0f) return@forEach
+            val rise = ParticleDissolveMotion.rise(time)
+            val left = dissolve.originX + particle.x + dissolve.direction * particle.drift * rise
+            val top =
+                dissolve.originY + particle.y - particle.lift * rise +
+                    ParticleDissolveMotion.wobble(rise, particle.phase, particle.size)
+            paint.color = (alpha shl 24) or (particle.color and 0xFFFFFF)
+            val corner = size * DISSOLVE_CORNER_RATIO
+            canvas.drawRoundRect(left, top, left + size, top + size, corner, corner, paint)
         }
     }
 
@@ -385,6 +444,7 @@ internal class CornerRadialOverlayView(
                 radialHandoffProgress = radialHandoffProgress,
                 exitProgress = exitProgress,
                 itemRings = itemRings,
+                hover = if (panelModeState.value) emptyList() else hoverState.value,
                 animationsEnabled = animationsEnabled,
             )
             if (panelModeState.value) {
@@ -418,6 +478,7 @@ internal class CornerRadialOverlayView(
         radialHandoffProgress: Animatable<Float, *>,
         exitProgress: Animatable<Float, *>,
         itemRings: List<Animatable<Float, *>>,
+        hover: List<Float>,
         animationsEnabled: Boolean,
     ) {
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
@@ -473,6 +534,7 @@ internal class CornerRadialOverlayView(
                 contentAlpha = alpha,
                 contentScale = if (panelModeState.value) handoffVisuals.contentScale else 1f,
                 itemRings = itemRings,
+                hover = hover,
             )
         }
     }
@@ -484,13 +546,37 @@ internal class CornerRadialOverlayView(
         contentAlpha: Float,
         contentScale: Float,
         itemRings: List<Animatable<Float, *>>,
+        hover: List<Float>,
     ) {
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
+        val iconRadius = metrics.iconDiameter / 2f
         layout.itemCenters.forEachIndexed { index, destination ->
-            val centerX = layout.origin.x + (destination.x - layout.origin.x) * motion.radialProgress + overshoot
-            val centerY = layout.origin.y + (destination.y - layout.origin.y) * motion.radialProgress
-            val scale = motion.iconScale * contentScale
+            val intensity = hover.getOrNull(index) ?: 0f
+            // 悬停项沿圆心方向向外推一点，让手指位置与图标更贴近。
+            val radialPush = iconRadius * 0.42f * intensity
+            val dx = destination.x - layout.origin.x
+            val dy = destination.y - layout.origin.y
+            val length = kotlin.math.hypot(dx, dy).coerceAtLeast(1f)
+            // 同排邻居被悬停项往两侧挤开，形成“让位”的连续位移。
+            val neighborShift =
+                layout.itemCenters.indices
+                    .filter { it != index }
+                    .sumOf { other ->
+                        val otherCenter = layout.itemCenters[other]
+                        if (kotlin.math.abs(otherCenter.y - destination.y) > iconRadius * 1.1f) {
+                            0.0
+                        } else {
+                            val sign = if (destination.x < otherCenter.x) -1f else 1f
+                            (sign * iconRadius * 0.105f * (hover.getOrNull(other) ?: 0f)).toDouble()
+                        }
+                    }
+                    .toFloat()
+            val centerX =
+                layout.origin.x + dx * motion.radialProgress + overshoot +
+                    (dx / length) * radialPush + neighborShift
+            val centerY = layout.origin.y + dy * motion.radialProgress + (dy / length) * radialPush
+            val scale = motion.iconScale * contentScale * (1f + 0.2f * intensity)
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
             val diameter = metrics.iconDiameter * scale
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
@@ -501,6 +587,7 @@ internal class CornerRadialOverlayView(
                 } else {
                     drawMoreItem(centerX, centerY, diameter, contentAlpha)
                 }
+                // 选中确认圈沿用原厚度动画，叠在悬停高亮之上。
                 val strokeWidth = metrics.itemPadding * scale * ringProgress
                 if (strokeWidth > 0f) {
                     drawCircle(
@@ -509,6 +596,17 @@ internal class CornerRadialOverlayView(
                         center = Offset(centerX, centerY),
                         alpha = RadialEntryMotion.SELECTION_RING_ALPHA * contentAlpha,
                         style = Stroke(width = strokeWidth),
+                    )
+                }
+                // 悬停高亮：越接近圆心越亮，滑过时连续过渡。
+                if (intensity > HOVER_GLOW_THRESHOLD) {
+                    val glowWidth = iconRadius * 0.22f * scale
+                    drawCircle(
+                        color = Color.White,
+                        radius = diameter / 2f + glowWidth / 2f,
+                        center = Offset(centerX, centerY),
+                        alpha = HOVER_GLOW_ALPHA * intensity * contentAlpha,
+                        style = Stroke(width = glowWidth),
                     )
                 }
             }
@@ -651,6 +749,8 @@ internal class CornerRadialOverlayView(
                                 .height(cellHeight)
                                 .clickable(enabled = inputEnabled) {
                                     listener.onAppCommitted(entry)
+                                    // 面板点击没有退场动画，直接收层（与轮盘提交一致）。
+                                    listener.onDismissRequested()
                                 },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -784,6 +884,13 @@ internal class CornerRadialOverlayView(
         val metrics = metricsState.value ?: return
         val layout = layoutState.value
         if (layout.itemCenters.isEmpty()) return
+        hoverState.value =
+            io.github.mangi.flymefreeform.gesture.RadialGeometry.hoverIntensities(
+                layout = layout,
+                x = latestX,
+                y = latestY,
+                iconDiameter = metrics.radial.iconDiameter,
+            )
         val next =
             RadialGeometry.selection(
                 layout = layout,
@@ -869,6 +976,8 @@ internal class CornerRadialOverlayView(
         if (dismissing || disposed) return
         dismissing = true
         removeCallbacks(timeout)
+        // 先取快照再做退场：菜单还没变形时采样才是完整的一帧。
+        startParticleDissolve()
         exitRequestState.value = ExitRequest(pendingCommit, entryProgress.value)
         removeCallbacks(dismissFallback)
         if (!ValueAnimator.areAnimatorsEnabled()) {
@@ -889,12 +998,110 @@ internal class CornerRadialOverlayView(
         val pendingCommit = exitRequestState.value?.pendingCommit
         exitRequestState.value = null
         if (pendingCommit == null) {
+            // 溶解还在播时先不移除悬浮层，等粒子散完再收。
+            if (dissolveState.value != null) return
             requestDismiss()
         } else {
             dismissNotified = true
             removeCallbacks(timeout)
             listener.onAppCommitted(pendingCommit)
+            // 有溶解时把收层让给粒子动画；没有则按原样立刻收。
+            if (dissolveState.value == null) listener.onDismissRequested()
         }
+    }
+
+    /**
+     * 采样快照并启动溶解；与「打开小窗」并行，只把悬浮层的移除推迟到粒子播完。
+     * 采样失败或全局动画被关闭时直接跳过，退场行为与原来一致。
+     */
+    private fun startParticleDissolve() {
+        if (dissolveState.value != null || !ValueAnimator.areAnimatorsEnabled()) return
+        val layout = layoutState.value
+        if (layout.itemCenters.isEmpty() || width <= 0 || height <= 0) return
+        val region = dissolveRegion(layout) ?: return
+        val particles = sampleDissolveParticles(region) ?: return
+        if (particles.isEmpty()) return
+        dissolveState.value =
+            ParticleDissolve(
+                particles = particles,
+                originX = region.left.toFloat(),
+                originY = region.top.toFloat(),
+                direction = if (layout.side == CornerSide.Left) 1f else -1f,
+            )
+        // 菜单本体立即让位给粒子，遮罩同步收掉，后面的应用不被压暗。
+        backdropOnlyState.value = true
+        backdropAlpha.floatValue = 0f
+        dissolveProgressState.floatValue = 0f
+        dissolveAnimator?.cancel()
+        dissolveAnimator =
+            ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = ParticleDissolveMotion.DURATION_MILLIS
+                interpolator =
+                    PathInterpolator(
+                        ParticleDissolveMotion.CONTROL_X1,
+                        ParticleDissolveMotion.CONTROL_Y1,
+                        ParticleDissolveMotion.CONTROL_X2,
+                        ParticleDissolveMotion.CONTROL_Y2,
+                    )
+                addUpdateListener { dissolveProgressState.floatValue = it.animatedValue as Float }
+                addListener(
+                    object : AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            if (dissolveAnimator === animation) finishParticleDissolve()
+                        }
+                    },
+                )
+                start()
+            }
+    }
+
+    /** 只采样轮盘所在的一角，避免把整屏透明与遮罩像素都变成粒子。 */
+    private fun dissolveRegion(layout: RadialLayout): AndroidRect? {
+        val extent = layout.radius * DISSOLVE_REGION_SCALE
+        val left = if (layout.side == CornerSide.Right) layout.origin.x - extent else 0f
+        val right = if (layout.side == CornerSide.Right) width.toFloat() else extent
+        val region =
+            AndroidRect(
+                left.toInt().coerceIn(0, width),
+                (layout.origin.y - extent).toInt().coerceIn(0, height),
+                right.toInt().coerceIn(0, width),
+                layout.origin.y.toInt().coerceIn(0, height),
+            )
+        return region.takeIf { it.width() > 0 && it.height() > 0 }
+    }
+
+    private fun sampleDissolveParticles(region: AndroidRect): List<DissolveParticle>? {
+        val snapshot = Bitmap.createBitmap(region.width(), region.height(), Bitmap.Config.ARGB_8888)
+        return try {
+            val canvas = Canvas(snapshot)
+            canvas.translate(-region.left.toFloat(), -region.top.toFloat())
+            draw(canvas)
+            val cellPx =
+                max(DISSOLVE_MIN_CELL_PX, (DISSOLVE_CELL_DP * resources.displayMetrics.density).roundToInt())
+            ParticleDissolveMotion.sample(
+                width = snapshot.width,
+                height = snapshot.height,
+                cellPx = cellPx,
+                alphaThreshold = DISSOLVE_ALPHA_THRESHOLD,
+                pixelAt = { x, y -> snapshot.getPixel(x, y) },
+            )
+        } catch (exception: RuntimeException) {
+            listener.onDissolveFailed(exception)
+            null
+        } catch (error: LinkageError) {
+            listener.onDissolveFailed(error)
+            null
+        } finally {
+            snapshot.recycle()
+        }
+    }
+
+    private fun finishParticleDissolve() {
+        dissolveAnimator = null
+        if (disposed) return
+        dissolveState.value = null
+        dissolveProgressState.floatValue = 0f
+        listener.onDissolveFinished()
     }
 
     private fun resetPanelTimeout() {
@@ -986,6 +1193,9 @@ internal class CornerRadialOverlayView(
                 itemCenters = emptyList(),
             )
         const val NO_SELECTION = -1
+        /** 低于此强度不画悬停高亮，避免整圈都泛白。 */
+        const val HOVER_GLOW_THRESHOLD = 0.08f
+        const val HOVER_GLOW_ALPHA = 150f / 255f
         const val PLATE_ALPHA = 235f / 255f
         const val PANEL_SURFACE_ALPHA = 253f / 255f
         const val MORE_DOT_RADIUS_FRACTION = 0.052f
@@ -1000,6 +1210,13 @@ internal class CornerRadialOverlayView(
         const val GESTURE_TIMEOUT_MS = 5_000L
         const val PANEL_TIMEOUT_MS = 15_000L
         const val DISMISS_FALLBACK_GRACE_MS = 260L
+        const val DISSOLVE_CELL_DP = 2f
+        const val DISSOLVE_MIN_CELL_PX = 4
+        /** 高于遮罩的 0.1 透明，只让菜单本体成粒子。 */
+        const val DISSOLVE_ALPHA_THRESHOLD = 40
+        /** 采样区域取轮盘半径的倍数，覆盖图标与“更多”。 */
+        const val DISSOLVE_REGION_SCALE = 1.6f
+        const val DISSOLVE_CORNER_RATIO = 0.18f
     }
 }
 

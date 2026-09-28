@@ -2,17 +2,21 @@ package io.github.mangi.flymefreeform.hook
 
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
 import android.graphics.Point
 import android.hardware.display.DisplayManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Display
+import io.github.mangi.flymefreeform.platform.PlatformRouting
+import io.github.mangi.flymefreeform.platform.SettingsNamespace
 import java.util.concurrent.CopyOnWriteArraySet
 
 /** 进程内共享的运行环境；设置与显示尺寸只在启动和系统通知时读取。 */
@@ -21,6 +25,7 @@ internal class ModuleEnvironmentState(
     private val onFailure: (String, RuntimeException) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
+    private val gameModeSignal = PlatformRouting.current().gameModeSignal
     private val observers = CopyOnWriteArraySet<() -> Unit>()
     private var context: Context? = null
     private var displays: DisplayManager? = null
@@ -77,7 +82,7 @@ internal class ModuleEnvironmentState(
             keyguard = appContext.getSystemService(KeyguardManager::class.java)
             val displayManager = displays ?: throw IllegalStateException("DisplayManager unavailable")
             appContext.contentResolver.registerContentObserver(
-                Settings.Global.getUriFor(GAME_MODE_KEY), false, settingsObserver,
+                gameModeUri(), false, settingsObserver,
             )
             watchingSettings = true
             appContext.contentResolver.registerContentObserver(
@@ -153,13 +158,30 @@ internal class ModuleEnvironmentState(
     private fun refreshSettings() {
         val resolver = context?.contentResolver ?: return
         try {
-            gameModeActive = Settings.Global.getInt(resolver, GAME_MODE_KEY, 0) == 1
+            gameModeActive = readGameModeActive(resolver)
             gestureNavigation = Settings.Secure.getInt(resolver, NAVIGATION_MODE_KEY, -1) == 2
         } catch (exception: RuntimeException) {
             gameModeActive = true
             gestureNavigation = false
             reportFailure("MODULE_ENVIRONMENT_SETTINGS_FAILED", exception)
         }
+    }
+
+    private fun gameModeUri(): Uri =
+        when (gameModeSignal.namespace) {
+            SettingsNamespace.Global -> Settings.Global.getUriFor(gameModeSignal.key)
+            SettingsNamespace.System -> Settings.System.getUriFor(gameModeSignal.key)
+            SettingsNamespace.Secure -> Settings.Secure.getUriFor(gameModeSignal.key)
+        }
+
+    private fun readGameModeActive(resolver: ContentResolver): Boolean {
+        val value =
+            when (gameModeSignal.namespace) {
+                SettingsNamespace.Global -> Settings.Global.getInt(resolver, gameModeSignal.key, 0)
+                SettingsNamespace.System -> Settings.System.getInt(resolver, gameModeSignal.key, 0)
+                SettingsNamespace.Secure -> Settings.Secure.getInt(resolver, gameModeSignal.key, 0)
+            }
+        return value == gameModeSignal.activeValue
     }
 
     private fun refreshKeyguardState() {
@@ -219,7 +241,6 @@ internal class ModuleEnvironmentState(
     )
 
     private companion object {
-        const val GAME_MODE_KEY = "debug_gamemode_value"
         const val NAVIGATION_MODE_KEY = "navigation_mode"
     }
 }
