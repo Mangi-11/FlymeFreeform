@@ -11,13 +11,19 @@ internal object SidebarSymbolCache {
         try { file.inputStream().use { properties.load(it) } } catch (_: IllegalArgumentException) { return null }
         if (properties.remove("identity") != identity) return null
         val map = properties.stringPropertyNames().associateWith { properties.getProperty(it) }
-        val required = setOf("resource", "landscape", "portrait", "hover", "shadowSetup", "shadowUpdate", "unit", "blurKind")
-        val expected = required + when (map["blurKind"]) {
-            "platform" -> setOf("blurAttach", "blurUpdate", "blurClose")
+        val required = setOf("resource", "landscape", "portrait", "hover", "unit", "shadowKind", "blurKind")
+        val shadow = when (map["shadowKind"]) {
+            "available" -> setOf("shadowSetup", "shadowUpdate")
+            "unavailable" -> emptySet()
+            else -> return null
+        }
+        val blur = when (map["blurKind"]) {
+            "platform", "platform-default" -> setOf("blurAttach", "blurUpdate", "blurClose")
             "legacy" -> setOf("blurAttach", "blurUpdate", "blurSupports")
             "unavailable" -> emptySet()
             else -> return null
         }
+        val expected = required + shadow + blur
         if (map.keys != expected) return null
         // 在交给 DexKit 描述符解析器之前拒绝损坏的缓存，避免其格式错误 Error。
         val objectType = "L[A-Za-z0-9_/$]+;"
@@ -25,7 +31,7 @@ internal object SidebarSymbolCache {
         val member = "$objectType->[A-Za-z0-9_$]+"
         val field = Regex("$member:$type")
         val method = Regex("$member\\((?:$type)*\\)(?:V|$type)")
-        if (map.filterKeys { it != "blurKind" }.any { (key, value) ->
+        if (map.filterKeys { it != "shadowKind" && it != "blurKind" }.any { (key, value) ->
                 !(if (key in setOf("resource", "unit")) field else method).matches(value)
             }) return null
         return map

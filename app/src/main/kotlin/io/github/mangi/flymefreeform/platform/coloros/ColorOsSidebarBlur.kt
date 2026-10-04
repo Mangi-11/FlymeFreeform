@@ -16,7 +16,7 @@ internal class ColorOsSidebarBlur(
     )
     private val platform = if (target == null || !target.platform) null else PlatformBlur(
         target.attach.declaringClass.getDeclaredConstructor().apply { isAccessible = true }.newInstance(),
-        target.attach, target.update, checkNotNull(target.close),
+        target.attach, target.defaultAttach, target.update, checkNotNull(target.close),
     )
 
     val available: Boolean
@@ -55,6 +55,7 @@ internal class ColorOsSidebarBlur(
     private class PlatformBlur(
         private val instance: Any,
         private val attachMethod: Method,
+        private val defaultAttach: Boolean,
         private val updateMethod: Method,
         private val closeMethod: Method,
     ) {
@@ -64,7 +65,12 @@ internal class ColorOsSidebarBlur(
             attached = true
             var success = false
             try {
-                success = attachMethod.invokeUnwrapped(instance, view, true, true) == true
+                // 新签名的最后一项由宿主 Kotlin 默认参数桥解析，mask 8 保留其默认背景色。
+                success = if (defaultAttach) {
+                    attachMethod.invokeUnwrapped(null, instance, view, true, true, 0, 8, null) == true
+                } else {
+                    attachMethod.invokeUnwrapped(instance, view, true, true) == true
+                }
                 return if (success) this else null
             } finally {
                 if (!success) close()

@@ -7,7 +7,7 @@ import java.io.InterruptedIOException
 
 /** 从宿主调用关系定位，不以 Android SDK 或混淆名作为版本选择依据。 */
 internal object SidebarDexQuery {
-    const val RULE_VERSION = "sidebar-v1-dexkit-2.2.0"
+    const val RULE_VERSION = "sidebar-v2-dexkit-2.2.0"
     private const val UTILS = "com.oplus.smartsidebar.utils"
     private const val SIZE = "com.oplus.smartsidebar.panelview.edgepanel.utils.MainPanelSizeHelper"
     private const val MAIN = "com.oplus.smartsidebar.panelview.edgepanel.PanelMainView"
@@ -27,9 +27,11 @@ internal object SidebarDexQuery {
             ?: throw NoSuchMethodException("SIDEBAR_DEX_LANDSCAPE_NOT_UNIQUE")
         val portrait = predicates.singleOrNull { it.opNames.map { opcode -> if (opcode == "goto") "return" else opcode } == listOf("invoke-virtual", "move-result", "if-eqz") + tail }
             ?: throw NoSuchMethodException("SIDEBAR_DEX_PORTRAIT_NOT_UNIQUE")
-        require(landscape.className == portrait.className)
+        require(landscape.className == portrait.className) { "SIDEBAR_DEX_ORIENTATION_OWNER_MISMATCH" }
         val dependencies = landscape.invokes.map { it.descriptor }.toSet()
-        require(dependencies.size == 3 && dependencies == portrait.invokes.map { it.descriptor }.toSet())
+        require(dependencies.size == 3 && dependencies == portrait.invokes.map { it.descriptor }.toSet()) {
+            "SIDEBAR_DEX_ORIENTATION_DEPENDENCIES_MISMATCH"
+        }
         val owner = checkNotNull(landscape.declaredClass)
         val hover = owner.methods.findMethod {
             matcher {
@@ -47,20 +49,15 @@ internal object SidebarDexQuery {
         result["hover"] = hover.descriptor
 
         if (Thread.currentThread().isInterrupted) throw InterruptedIOException("SIDEBAR_DEX_CANCELLED")
-        val nativeCalls = bridge.getClassData(MAIN)?.methods?.flatMap { it.invokes }
-            ?.distinctBy { it.descriptor } ?: throw NoSuchMethodException("SIDEBAR_DEX_MAIN_MISSING")
-        val shadowUpdate = nativeCalls.filter {
-            it.className.startsWith("$UTILS.") && it.paramTypeNames == listOf("android.view.View", "float") &&
-                it.returnTypeName == "void" && Modifier.isStatic(it.modifiers)
-        }.filter { method -> method.invokes.any { it.descriptor == "Landroid/view/View;->setElevation(F)V" } }
-            .singleOrNull() ?: throw NoSuchMethodException("SIDEBAR_DEX_SHADOW_UPDATE_NOT_UNIQUE")
-        val shadowSetup = checkNotNull(shadowUpdate.declaredClass).methods.singleOrNull {
-            it.className == shadowUpdate.className && it.paramTypeNames == listOf("android.view.View") &&
-                it.returnTypeName == "void" && Modifier.isStatic(it.modifiers) &&
-                it.callers.any { caller -> caller.className == MAIN || caller.className.startsWith(MAIN + "$") }
-        } ?: throw NoSuchMethodException("SIDEBAR_DEX_SHADOW_SETUP_NOT_UNIQUE")
-        result["shadowSetup"] = shadowSetup.descriptor
-        result["shadowUpdate"] = shadowUpdate.descriptor
+        try {
+            result.putAll(findShadow(bridge))
+        } catch (exception: ReflectiveOperationException) {
+            report("SIDEBAR_DEX_SHADOW_UNAVAILABLE", exception)
+            result["shadowKind"] = "unavailable"
+        } catch (exception: IllegalArgumentException) {
+            report("SIDEBAR_DEX_SHADOW_UNAVAILABLE", exception)
+            result["shadowKind"] = "unavailable"
+        }
 
         val unit = bridge.findMethod {
             searchPackages("kotlin")
@@ -79,14 +76,45 @@ internal object SidebarDexQuery {
             report("SIDEBAR_DEX_BLUR_UNAVAILABLE", exception)
             result["blurKind"] = "unavailable"
         }
+        if (Thread.currentThread().isInterrupted) throw InterruptedIOException("SIDEBAR_DEX_CANCELLED")
         return result
+    }
+
+    private fun findShadow(bridge: DexKitBridge): Map<String, String> {
+        val nativeCalls = bridge.getClassData(MAIN)?.methods?.flatMap { it.invokes }
+            ?.distinctBy { it.descriptor } ?: throw NoSuchMethodException("SIDEBAR_DEX_MAIN_MISSING")
+        val shadowUpdate = nativeCalls.filter {
+            it.className.startsWith("$UTILS.") && it.paramTypeNames == listOf("android.view.View", "float") &&
+                it.returnTypeName == "void" && Modifier.isStatic(it.modifiers)
+        }.filter { method ->
+            method.invokes.any { it.descriptor == "Landroid/view/View;->setElevation(F)V" } ||
+                // 新结构将阴影参数打包后交给同类方法；只沿这一层实际调用检查。
+                method.invokes.any { delegate ->
+                    delegate.className == method.className && Modifier.isStatic(delegate.modifiers) &&
+                        delegate.returnTypeName == "void" && delegate.paramCount == 3 &&
+                        delegate.paramTypeNames.first() == "android.view.View" &&
+                        delegate.paramTypeNames[1].startsWith(method.className + "$") &&
+                        delegate.paramTypeNames.last() == "float" &&
+                        delegate.invokes.any { it.descriptor == "Landroid/view/View;->setElevation(F)V" }
+                }
+        }.unique("SHADOW_UPDATE")
+        val shadowSetup = checkNotNull(shadowUpdate.declaredClass).methods.filter {
+            it.className == shadowUpdate.className && it.paramTypeNames == listOf("android.view.View") &&
+                it.returnTypeName == "void" && Modifier.isStatic(it.modifiers) &&
+                it.callers.any { caller -> caller.className == MAIN || caller.className.startsWith(MAIN + "$") }
+        }.unique("SHADOW_SETUP")
+        return mapOf("shadowKind" to "available", "shadowSetup" to shadowSetup.descriptor, "shadowUpdate" to shadowUpdate.descriptor)
     }
 
     private fun findBlur(bridge: DexKitBridge): Map<String, String> {
         val platform = bridge.getClassData(PLATFORM_BLUR)
         if (platform != null) {
-            val attach = platform.methods.findMethod {
-                matcher { paramTypes("android.view.View", "boolean", "boolean"); returnType = "boolean"; usingEqStrings("applyTo: blur not supported") }
+            val attach = platform.methods.filter {
+                it.returnTypeName == "boolean" && !Modifier.isStatic(it.modifiers) &&
+                    it.paramTypeNames in listOf(
+                        listOf("android.view.View", "boolean", "boolean"),
+                        listOf("android.view.View", "boolean", "boolean", "int"),
+                    ) && "applyTo: blur not supported" in it.usingStrings
             }.unique("BLUR_ATTACH")
             val update = platform.methods.findMethod {
                 matcher { paramTypes("float"); returnType = "void"; addInvoke("Landroid/view/View;->invalidate()V") }
@@ -95,7 +123,17 @@ internal object SidebarDexQuery {
                 matcher { paramTypes(); returnType = "void"; usingEqStrings("SidebarPlatformBlur", "release") }
             }.unique("BLUR_CLOSE")
             require(listOf(attach, update, close).none { Modifier.isStatic(it.modifiers) })
-            return mapOf("blurKind" to "platform", "blurAttach" to attach.descriptor, "blurUpdate" to update.descriptor, "blurClose" to close.descriptor)
+            val defaults = if (attach.paramCount == 4) platform.methods.filter {
+                Modifier.isStatic(it.modifiers) && it.modifiers and 0x1000 != 0 &&
+                    it.returnTypeName == "boolean" && it.paramTypeNames == listOf(
+                        platform.name, "android.view.View", "boolean", "boolean", "int", "int", "java.lang.Object",
+                    ) && it.invokes.any { call -> call.descriptor == attach.descriptor }
+            }.unique("BLUR_ATTACH_DEFAULTS") else null
+            return mapOf(
+                "blurKind" to if (defaults == null) "platform" else "platform-default",
+                "blurAttach" to (defaults ?: attach).descriptor,
+                "blurUpdate" to update.descriptor, "blurClose" to close.descriptor,
+            )
         }
         val attach = bridge.findMethod {
             searchPackages(UTILS)
@@ -125,5 +163,5 @@ internal object SidebarDexQuery {
     }
 
     private fun List<MethodData>.unique(code: String): MethodData = singleOrNull()
-        ?: throw NoSuchMethodException("SIDEBAR_DEX_${code}_NOT_UNIQUE")
+        ?: throw NoSuchMethodException("SIDEBAR_DEX_${code}_NOT_UNIQUE: candidates=$size")
 }

@@ -54,8 +54,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
     private val isTabletop = target.hover
     private val gap = loader.loadClass("com.oplus.smartsidebar.panelview.edgepanel.utils.MainPanelSizeHelper").getMethod("getPanelGap")
     private val sidebarBlur = ColorOsSidebarBlur(target.blur)
-    private val setupShadow = target.shadowSetup
-    private val updateShadow = target.shadowUpdate
+    private val shadow = target.shadow
 
     // Service 使用平台默认主题；原厂内容依赖 App 的配置/主题包装，不能直接传 Service。
     private val context = themedContext(loader)
@@ -170,8 +169,8 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
         cardClass.getMethod("setCardBackgroundColor", Int::class.javaPrimitiveType).call(surface, getColor.call(original))
         surface.clipToOutline = true
         surface.isForceDarkAllowed = false
-        setupShadow.call(null, surface)
-        updateShadow.call(null, surface, 1f)
+        shadow?.setup?.call(null, surface)
+        shadow?.update?.call(null, surface, 1f)
         surface.addView(view, FrameLayout.LayoutParams(-1, -1))
         card = surface
         return surface
@@ -207,7 +206,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
 
     fun updateBlur(alpha: Float) {
         blur?.update(alpha)
-        card?.let { updateShadow.call(null, it, alpha) }
+        card?.let { shadow?.update?.call(null, it, alpha) }
     }
 
     fun dimensions() = AllAppsPanelGeometry.Dimensions(

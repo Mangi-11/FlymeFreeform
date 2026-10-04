@@ -6,6 +6,7 @@ import org.luckypray.dexkit.wrap.DexField
 import org.luckypray.dexkit.wrap.DexMethod
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
@@ -16,16 +17,26 @@ internal data class ColorOsSidebarVisualTarget(
     val landscape: Method,
     val portrait: Method,
     val hover: Method,
-    val shadowSetup: Method,
-    val shadowUpdate: Method,
+    val shadow: Shadow?,
     val unit: Field,
     val blur: Blur?,
 ) {
-    data class Blur(val platform: Boolean, val attach: Method, val update: Method, val close: Method?, val supports: Method?)
+    data class Shadow(val setup: Method, val update: Method)
+    data class Blur(
+        val platform: Boolean,
+        val defaultAttach: Boolean,
+        val attach: Method,
+        val update: Method,
+        val close: Method?,
+        val supports: Method?,
+    )
 
     companion object {
         fun resolve(loader: ClassLoader, apk: File, cache: File, report: (String, Throwable?) -> Unit): ColorOsSidebarVisualTarget {
             val identity = DexApkIdentity.compute(apk, SidebarDexQuery.RULE_VERSION)
+            ensureActive()
+            // 描述符绑定在 Java 反射失败时也可能走 DexKit native 回退。
+            System.loadLibrary("dexkit")
             val cached = try { SidebarSymbolCache.read(cache, identity) } catch (e: IOException) {
                 report("SIDEBAR_DEX_CACHE_READ_FAILED", e)
                 null
@@ -39,12 +50,13 @@ internal data class ColorOsSidebarVisualTarget(
                     report("SIDEBAR_DEX_CACHE_REJECTED", e)
                 }
             }
-            System.loadLibrary("dexkit")
             val symbols = DexKitBridge.create(apk.path).use { bridge ->
                 bridge.setThreadNum(1)
                 SidebarDexQuery.find(bridge, report)
             }
+            ensureActive()
             val target = bind(loader, symbols)
+            ensureActive()
             try { SidebarSymbolCache.write(cache, identity, symbols) } catch (e: IOException) {
                 report("SIDEBAR_DEX_CACHE_WRITE_FAILED", e)
             }
@@ -69,27 +81,45 @@ internal data class ColorOsSidebarVisualTarget(
             val portrait = method("portrait", false, bool)
             val hover = method("hover", false, bool, bool)
             require(listOf(landscape, portrait, hover).all { it.declaringClass == resource.type })
-            val setup = method("shadowSetup", true, Void.TYPE, View::class.java)
-            val update = method("shadowUpdate", true, Void.TYPE, View::class.java, float)
-            require(setup.declaringClass == update.declaringClass)
+            val shadow = when (symbols.getValue("shadowKind")) {
+                "available" -> {
+                    val setup = method("shadowSetup", true, Void.TYPE, View::class.java)
+                    val update = method("shadowUpdate", true, Void.TYPE, View::class.java, float)
+                    require(setup.declaringClass == update.declaringClass)
+                    Shadow(setup, update)
+                }
+                "unavailable" -> null
+                else -> throw IllegalArgumentException("SIDEBAR_DEX_SHADOW_KIND_INVALID")
+            }
             val unit = field("unit")
             require(unit.type == unit.declaringClass)
             if (symbols.getValue("blurKind") == "unavailable") {
-                return ColorOsSidebarVisualTarget(resource, landscape, portrait, hover, setup, update, unit, null)
+                return ColorOsSidebarVisualTarget(resource, landscape, portrait, hover, shadow, unit, null)
             }
             val platform = when (symbols.getValue("blurKind")) {
-                "platform" -> true
+                "platform", "platform-default" -> true
                 "legacy" -> false
                 else -> throw IllegalArgumentException("SIDEBAR_DEX_BLUR_KIND_INVALID")
             }
-            val attach = method("blurAttach", !platform, if (platform) bool else loader.loadClass("com.oplus.view.ViewRootManager"), View::class.java, bool, bool)
+            val defaultAttach = symbols.getValue("blurKind") == "platform-default"
+            val attach = if (defaultAttach) {
+                val owner = loader.loadClass(DexMethod(symbols.getValue("blurAttach")).className)
+                method("blurAttach", true, bool, owner, View::class.java, bool, bool, Integer.TYPE, Integer.TYPE, Any::class.java)
+                    .also { require(it.isSynthetic) }
+            } else {
+                method("blurAttach", !platform, if (platform) bool else loader.loadClass("com.oplus.view.ViewRootManager"), View::class.java, bool, bool)
+            }
             val blurUpdate = if (platform) method("blurUpdate", false, Void.TYPE, float)
                 else method("blurUpdate", true, Void.TYPE, View::class.java, attach.returnType, float)
             val close = if (platform) method("blurClose", false, Void.TYPE) else null
             val supports = if (platform) null else method("blurSupports", true, bool)
             require(listOfNotNull(blurUpdate, close, supports).all { it.declaringClass == attach.declaringClass })
             if (platform) attach.declaringClass.getDeclaredConstructor()
-            return ColorOsSidebarVisualTarget(resource, landscape, portrait, hover, setup, update, unit, Blur(platform, attach, blurUpdate, close, supports))
+            return ColorOsSidebarVisualTarget(resource, landscape, portrait, hover, shadow, unit, Blur(platform, defaultAttach, attach, blurUpdate, close, supports))
+        }
+
+        private fun ensureActive() {
+            if (Thread.currentThread().isInterrupted) throw InterruptedIOException("SIDEBAR_DEX_CANCELLED")
         }
     }
 }

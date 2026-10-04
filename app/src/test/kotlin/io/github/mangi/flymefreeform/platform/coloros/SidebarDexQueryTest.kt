@@ -1,13 +1,15 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assume.assumeNotNull
 import org.junit.Test
 import org.luckypray.dexkit.DexKitBridge
 import java.io.File
+import java.io.InterruptedIOException
 
 class SidebarDexQueryTest {
-    @Test fun resolvesBothInspectedSidebarGenerations() {
+    @Test fun resolvesInspectedSidebarApks() {
         val fixtures = System.getenv("FLYMEFREEFORM_TEST_SIDEBAR_FIXTURES")
         val native = System.getenv("FLYMEFREEFORM_TEST_DEXKIT_LIBRARY")
         assumeNotNull(fixtures, native)
@@ -23,7 +25,25 @@ class SidebarDexQueryTest {
                 bridge.setThreadNum(1)
                 SidebarDexQuery.find(bridge)
             }
-            assertEquals(expected, actual)
+            assertEquals("Sidebar APK: $apk", expected, actual)
+        }
+    }
+
+    @Test fun interruptedQueryDoesNotReturnPartialCapabilities() {
+        val fixtures = System.getenv("FLYMEFREEFORM_TEST_SIDEBAR_FIXTURES")
+        val native = System.getenv("FLYMEFREEFORM_TEST_DEXKIT_LIBRARY")
+        assumeNotNull(fixtures, native)
+        System.load(native!!)
+        val apk = File(fixtures!!).readLines().first { it.isNotBlank() }.substringBefore('\t')
+        DexKitBridge.create(apk).use { bridge ->
+            bridge.setThreadNum(1)
+            try {
+                Thread.currentThread().interrupt()
+                val exception = assertThrows(InterruptedIOException::class.java) { SidebarDexQuery.find(bridge) }
+                assertEquals("SIDEBAR_DEX_CANCELLED", exception.message)
+            } finally {
+                Thread.interrupted()
+            }
         }
     }
 }
