@@ -78,6 +78,8 @@ import io.github.mangi.flymefreeform.gesture.RadialLayout
 import io.github.mangi.flymefreeform.platform.coloros.AppCatalogSnapshot
 import io.github.mangi.flymefreeform.platform.coloros.RadialEntry
 import io.github.mangi.flymefreeform.ui.theme.CornerOverlayTheme
+import io.github.mangi.flymefreeform.ui.theme.LocalRadialItemColors
+import io.github.mangi.flymefreeform.ui.theme.RadialItemColors
 import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -421,6 +423,7 @@ internal class CornerRadialOverlayView(
         itemRings: List<Animatable<Float, *>>,
         animationsEnabled: Boolean,
     ) {
+        val itemColors = LocalRadialItemColors.current
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             if (backdropOnlyState.value) {
                 drawRect(Color.Black, alpha = OverlayBackdrop.MAX_ALPHA * backdropAlpha.floatValue)
@@ -474,6 +477,7 @@ internal class CornerRadialOverlayView(
                 contentAlpha = alpha,
                 contentScale = if (panelModeState.value) handoffVisuals.contentScale else 1f,
                 itemRings = itemRings,
+                colors = itemColors,
             )
         }
     }
@@ -485,6 +489,7 @@ internal class CornerRadialOverlayView(
         contentAlpha: Float,
         contentScale: Float,
         itemRings: List<Animatable<Float, *>>,
+        colors: RadialItemColors,
     ) {
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
@@ -498,10 +503,10 @@ internal class CornerRadialOverlayView(
                 if (index < catalog.radialApps.size) {
                     radialImages.value.getOrNull(index)?.let { image ->
                         drawSystemImage(image.icon, centerX, centerY, diameter, contentAlpha)
-                        drawIconFinish(centerX, centerY, diameter, contentAlpha)
+                        drawIconFinish(centerX, centerY, diameter, contentAlpha, colors.iconShadeAlpha)
                     }
                 } else {
-                    drawMoreItem(centerX, centerY, diameter, contentAlpha)
+                    drawMoreItem(centerX, centerY, diameter, contentAlpha, colors)
                 }
                 val strokeWidth = metrics.itemPadding * scale * ringProgress
                 if (strokeWidth > 0f) {
@@ -521,18 +526,21 @@ internal class CornerRadialOverlayView(
         }
     }
 
-    /** 圆形图标上叠 1px 半透明白色内描边，让深色图标在遮罩上保有清晰边缘；不压暗图标本身。 */
+    /** 圆形图标上叠 1px 半透明白色内描边，让深色图标在遮罩上保有清晰边缘；深色模式另加压暗层。 */
     private fun DrawScope.drawIconFinish(
         centerX: Float,
         centerY: Float,
         diameter: Float,
         alpha: Float,
+        shadeAlpha: Float,
     ) {
         if (diameter <= ICON_EDGE_WIDTH_PX * 2f) return
+        val center = Offset(centerX, centerY)
+        if (shadeAlpha > 0f) drawCircle(color = Color.Black, radius = diameter / 2f, center = center, alpha = shadeAlpha * alpha)
         drawCircle(
             color = Color.White,
             radius = diameter / 2f - ICON_EDGE_WIDTH_PX / 2f,
-            center = Offset(centerX, centerY),
+            center = center,
             alpha = ICON_EDGE_ALPHA * alpha,
             style = Stroke(width = ICON_EDGE_WIDTH_PX),
         )
@@ -557,24 +565,25 @@ internal class CornerRadialOverlayView(
     }
 
     /**
-     * 按 ColorOS 17 工具栏溢出按钮的观感绘制：近白圆盘、下沉的柔和投影、上下沿高光，
-     * 以及横排三点。比例取自同一按钮 40dp 圆盘内 24dp 图标的实机测量，随图标直径缩放。
+     * 按 ColorOS 17 工具栏溢出按钮的观感绘制：圆盘、向下偏移的外沿投影或微光、上下沿高光，
+     * 以及横排三点；配色随深浅色切换。比例取自同一按钮 40dp 圆盘内 24dp 图标的实机测量，随图标直径缩放。
      */
     private fun DrawScope.drawMoreItem(
         centerX: Float,
         centerY: Float,
         diameter: Float,
         alpha: Float,
+        colors: RadialItemColors,
     ) {
         val radius = diameter / 2f
         if (radius <= 0f) return
-        val shadowCenter = Offset(centerX, centerY + diameter * MORE_SHADOW_OFFSET_FRACTION)
-        val shadowRadius = radius + diameter * MORE_SHADOW_SPREAD_FRACTION
+        val shadowCenter = Offset(centerX, centerY + diameter * colors.moreShadowOffsetFraction)
+        val shadowRadius = radius + diameter * colors.moreShadowSpreadFraction
         drawCircle(
             brush = Brush.radialGradient(
-                0f to Color.Black.copy(alpha = MORE_SHADOW_ALPHA),
-                radius / shadowRadius to Color.Black.copy(alpha = MORE_SHADOW_ALPHA),
-                1f to Color.Transparent,
+                0f to colors.moreShadow,
+                radius / shadowRadius to colors.moreShadow,
+                1f to colors.moreShadow.copy(alpha = 0f),
                 center = shadowCenter,
                 radius = shadowRadius,
             ),
@@ -582,13 +591,23 @@ internal class CornerRadialOverlayView(
             center = shadowCenter,
             alpha = alpha,
         )
-        drawCircle(color = MORE_PLATE_COLOR, radius = radius, center = Offset(centerX, centerY), alpha = alpha)
+        drawCircle(
+            brush = Brush.verticalGradient(
+                0f to colors.morePlateTop,
+                1f to colors.morePlateBottom,
+                startY = centerY - radius,
+                endY = centerY + radius,
+            ),
+            radius = radius,
+            center = Offset(centerX, centerY),
+            alpha = alpha,
+        )
         val rimWidth = diameter * MORE_RIM_WIDTH_FRACTION
         drawCircle(
             brush = Brush.verticalGradient(
-                0f to Color.White,
-                0.5f to Color.White.copy(alpha = 0f),
-                1f to Color.White,
+                0f to colors.moreRim,
+                0.5f to colors.moreRim.copy(alpha = 0f),
+                1f to colors.moreRim,
                 startY = centerY - radius,
                 endY = centerY + radius,
             ),
@@ -599,7 +618,7 @@ internal class CornerRadialOverlayView(
         )
         for (offset in -1..1) {
             drawCircle(
-                color = MORE_DOT_COLOR,
+                color = colors.moreDot,
                 radius = diameter * MORE_DOT_RADIUS_FRACTION,
                 center = Offset(centerX + offset * diameter * MORE_DOT_SPACING_FRACTION, centerY),
                 alpha = alpha,
@@ -1059,15 +1078,10 @@ internal class CornerRadialOverlayView(
         // 描边固定为物理 1px 发丝线，不随密度和扇形缩放加粗。
         const val ICON_EDGE_WIDTH_PX = 1f
         const val PANEL_SURFACE_ALPHA = 253f / 255f
-        val MORE_PLATE_COLOR = Color(0xFFF7F7F8)
-        val MORE_DOT_COLOR = Color(0xFF181818)
         // 24dp 图标在 40dp 圆盘内：点径 3.5、点距 7.125（图标视口单位）。
         const val MORE_DOT_RADIUS_FRACTION = 1.75f / 24f * 0.6f
         const val MORE_DOT_SPACING_FRACTION = 7.125f / 24f * 0.6f
         const val MORE_RIM_WIDTH_FRACTION = 0.02f
-        const val MORE_SHADOW_ALPHA = 0.05f
-        const val MORE_SHADOW_SPREAD_FRACTION = 0.25f
-        const val MORE_SHADOW_OFFSET_FRACTION = 0.03f
         const val PANEL_EXPAND_DAMPING = 0.9f
         const val PANEL_EXPAND_RESPONSE_SECONDS = 0.3f
         const val PANEL_VISIBILITY_THRESHOLD = 0.0001f
