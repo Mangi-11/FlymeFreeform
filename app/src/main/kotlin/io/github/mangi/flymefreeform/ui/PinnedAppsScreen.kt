@@ -529,11 +529,20 @@ private fun AddedAppRow(
 
 @Composable
 private fun AppIcon(app: SelectableEntry) {
-    Image(
-        bitmap = app.icon.asImageBitmap(),
-        contentDescription = null,
-        modifier = Modifier.size(44.dp).squircleClip(12.dp),
-    )
+    Box(modifier = Modifier.size(44.dp)) {
+        Image(
+            bitmap = app.icon.asImageBitmap(),
+            contentDescription = null,
+            modifier = Modifier.matchParentSize().squircleClip(12.dp),
+        )
+        app.badge?.let { badge ->
+            Image(
+                bitmap = badge.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+    }
 }
 
 @Composable

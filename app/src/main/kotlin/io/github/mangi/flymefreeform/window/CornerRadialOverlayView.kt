@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
@@ -119,7 +120,7 @@ internal class CornerRadialOverlayView(
     private var appliedWindowInsets: WindowInsets? = null
     private var catalog = AppCatalogSnapshot()
     private val radialClipPath = Path()
-    private val radialImages = mutableStateOf<List<ImageBitmap>>(emptyList())
+    private val radialImages = mutableStateOf<List<RadialImage>>(emptyList())
     private var panelImages: Map<io.github.mangi.flymefreeform.config.PinnedTarget, ImageBitmap> = emptyMap()
     private var side = CornerSide.Right
     private var latestX = 0f
@@ -152,7 +153,7 @@ internal class CornerRadialOverlayView(
         if (disposed || dismissing || panelModeState.value) return
         // 只替换同一批应用的图像，不在滑选途中交换目标或重置入场动画。
         if (catalog.radialApps.map { it.target } != next.radialApps.map { it.target }) return
-        radialImages.value = next.radialApps.map { it.icon.asImageBitmap() }
+        radialImages.value = next.radialApps.map(::RadialImage)
     }
 
     fun begin(
@@ -166,7 +167,7 @@ internal class CornerRadialOverlayView(
         this.catalog = catalog
         latestX = x
         latestY = y
-        radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
+        radialImages.value = catalog.radialApps.map(::RadialImage)
         panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
@@ -496,7 +497,8 @@ internal class CornerRadialOverlayView(
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
                 if (index < catalog.radialApps.size) {
                     radialImages.value.getOrNull(index)?.let { image ->
-                        drawSystemImage(image, centerX, centerY, diameter, contentAlpha)
+                        drawSystemImage(image.icon, centerX, centerY, diameter, contentAlpha)
+                        drawIconFinish(centerX, centerY, diameter, contentAlpha)
                     }
                 } else {
                     drawMoreItem(centerX, centerY, diameter, contentAlpha)
@@ -511,26 +513,93 @@ internal class CornerRadialOverlayView(
                         style = Stroke(width = strokeWidth),
                     )
                 }
+                // 角标位于图标外接正方形的右下角，叠在圆形与选中外圈之上，不参与圆形裁剪。
+                radialImages.value.getOrNull(index)?.badge?.let { badge ->
+                    drawBadge(badge, centerX, centerY, diameter, contentAlpha)
+                }
             }
         }
     }
 
+    /** 圆形图标上叠 1px 半透明白色内描边，让深色图标在遮罩上保有清晰边缘；不压暗图标本身。 */
+    private fun DrawScope.drawIconFinish(
+        centerX: Float,
+        centerY: Float,
+        diameter: Float,
+        alpha: Float,
+    ) {
+        if (diameter <= ICON_EDGE_WIDTH_PX * 2f) return
+        drawCircle(
+            color = Color.White,
+            radius = diameter / 2f - ICON_EDGE_WIDTH_PX / 2f,
+            center = Offset(centerX, centerY),
+            alpha = ICON_EDGE_ALPHA * alpha,
+            style = Stroke(width = ICON_EDGE_WIDTH_PX),
+        )
+    }
+
+    private fun DrawScope.drawBadge(
+        badge: ImageBitmap,
+        centerX: Float,
+        centerY: Float,
+        size: Float,
+        alpha: Float,
+    ) {
+        val pixels = size.roundToInt()
+        if (pixels <= 0) return
+        drawImage(
+            image = badge,
+            dstOffset = IntOffset((centerX - pixels / 2f).roundToInt(), (centerY - pixels / 2f).roundToInt()),
+            dstSize = IntSize(pixels, pixels),
+            alpha = alpha,
+            filterQuality = FilterQuality.High,
+        )
+    }
+
+    /**
+     * 按 ColorOS 17 工具栏溢出按钮的观感绘制：近白圆盘、下沉的柔和投影、上下沿高光，
+     * 以及横排三点。比例取自同一按钮 40dp 圆盘内 24dp 图标的实机测量，随图标直径缩放。
+     */
     private fun DrawScope.drawMoreItem(
         centerX: Float,
         centerY: Float,
         diameter: Float,
         alpha: Float,
     ) {
+        val radius = diameter / 2f
+        if (radius <= 0f) return
+        val shadowCenter = Offset(centerX, centerY + diameter * MORE_SHADOW_OFFSET_FRACTION)
+        val shadowRadius = radius + diameter * MORE_SHADOW_SPREAD_FRACTION
         drawCircle(
-            color = Color.White,
-            radius = diameter / 2f,
-            center = Offset(centerX, centerY),
-            alpha = alpha * PLATE_ALPHA,
+            brush = Brush.radialGradient(
+                0f to Color.Black.copy(alpha = MORE_SHADOW_ALPHA),
+                radius / shadowRadius to Color.Black.copy(alpha = MORE_SHADOW_ALPHA),
+                1f to Color.Transparent,
+                center = shadowCenter,
+                radius = shadowRadius,
+            ),
+            radius = shadowRadius,
+            center = shadowCenter,
+            alpha = alpha,
         )
-        val dotColor = Color(0xFF37373C)
+        drawCircle(color = MORE_PLATE_COLOR, radius = radius, center = Offset(centerX, centerY), alpha = alpha)
+        val rimWidth = diameter * MORE_RIM_WIDTH_FRACTION
+        drawCircle(
+            brush = Brush.verticalGradient(
+                0f to Color.White,
+                0.5f to Color.White.copy(alpha = 0f),
+                1f to Color.White,
+                startY = centerY - radius,
+                endY = centerY + radius,
+            ),
+            radius = radius - rimWidth / 2f,
+            center = Offset(centerX, centerY),
+            alpha = alpha,
+            style = Stroke(width = rimWidth),
+        )
         for (offset in -1..1) {
             drawCircle(
-                color = dotColor,
+                color = MORE_DOT_COLOR,
                 radius = diameter * MORE_DOT_RADIUS_FRACTION,
                 center = Offset(centerX + offset * diameter * MORE_DOT_SPACING_FRACTION, centerY),
                 alpha = alpha,
@@ -986,10 +1055,19 @@ internal class CornerRadialOverlayView(
                 itemCenters = emptyList(),
             )
         const val NO_SELECTION = -1
-        const val PLATE_ALPHA = 235f / 255f
+        const val ICON_EDGE_ALPHA = 0x24 / 255f
+        // 描边固定为物理 1px 发丝线，不随密度和扇形缩放加粗。
+        const val ICON_EDGE_WIDTH_PX = 1f
         const val PANEL_SURFACE_ALPHA = 253f / 255f
-        const val MORE_DOT_RADIUS_FRACTION = 0.052f
-        const val MORE_DOT_SPACING_FRACTION = 0.17f
+        val MORE_PLATE_COLOR = Color(0xFFF7F7F8)
+        val MORE_DOT_COLOR = Color(0xFF181818)
+        // 24dp 图标在 40dp 圆盘内：点径 3.5、点距 7.125（图标视口单位）。
+        const val MORE_DOT_RADIUS_FRACTION = 1.75f / 24f * 0.6f
+        const val MORE_DOT_SPACING_FRACTION = 7.125f / 24f * 0.6f
+        const val MORE_RIM_WIDTH_FRACTION = 0.02f
+        const val MORE_SHADOW_ALPHA = 0.05f
+        const val MORE_SHADOW_SPREAD_FRACTION = 0.25f
+        const val MORE_SHADOW_OFFSET_FRACTION = 0.03f
         const val PANEL_EXPAND_DAMPING = 0.9f
         const val PANEL_EXPAND_RESPONSE_SECONDS = 0.3f
         const val PANEL_VISIBILITY_THRESHOLD = 0.0001f
@@ -1035,3 +1113,8 @@ private fun Modifier.panelReveal(
             }
         }
     }
+
+private class RadialImage(entry: RadialEntry) {
+    val icon: ImageBitmap = entry.icon.asImageBitmap()
+    val badge: ImageBitmap? = entry.badge?.asImageBitmap()
+}

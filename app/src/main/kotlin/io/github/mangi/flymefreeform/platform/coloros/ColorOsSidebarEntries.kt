@@ -64,7 +64,13 @@ internal class ColorOsSidebarEntries(private val context: Context, loader: Class
         val title = (label.call(bean) as? String)?.takeIf { it.isNotBlank() }
             ?: cloneInfo?.label?.toString()?.takeIf { it.isNotBlank() }
             ?: return@mapNotNull null
-        SelectableEntry(target, title.take(160), packageName.take(256), icon(bean, target, packageName, cloneInfo))
+        SelectableEntry(
+            target,
+            title.take(160),
+            packageName.take(256),
+            icon(bean, target, packageName, cloneInfo),
+            cloneInfo?.let(::cloneBadge),
+        )
     }.distinctBy(SelectableEntry::target).also { require(it.size <= SidebarEntryProtocol.MAX_ENTRIES) }
 
     /** 目录查询在工作线程完成；主线程只校验已解析条目并调用原生路由。 */
@@ -111,8 +117,9 @@ internal class ColorOsSidebarEntries(private val context: Context, loader: Class
                 val id = iconRes.call(bean) as Int
                 if (id == 0) null else context.getDrawable(id)
             }
+            // 角标单独生成，避免圆形图标裁剪时切掉右下角。
             PinnedTarget.Kind.CloneApp -> try {
-                cloneInfo?.getBadgedIcon(context.resources.displayMetrics.densityDpi)
+                cloneInfo?.getIcon(context.resources.displayMetrics.densityDpi)
             } catch (_: RuntimeException) { null }
             else -> {
                 val owner = shortcuts.call(null)
@@ -138,11 +145,29 @@ internal class ColorOsSidebarEntries(private val context: Context, loader: Class
         } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
             context.packageManager.defaultActivityIcon
         }
-        return Bitmap.createBitmap(SidebarEntryProtocol.ICON_SIZE, SidebarEntryProtocol.ICON_SIZE, Bitmap.Config.ARGB_8888).also {
-            source.setBounds(0, 0, it.width, it.height)
-            source.draw(Canvas(it))
+        return source.toIconBitmap()
+    }
+
+    /** 让系统在透明底图上绘制分身用户角标，位置与比例沿用系统徽标规则。 */
+    private fun cloneBadge(info: LauncherActivityInfo): Bitmap? {
+        val size = SidebarEntryProtocol.ICON_SIZE
+        val blank = BitmapDrawable(context.resources, Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888))
+        val badged = try {
+            context.packageManager.getUserBadgedIcon(blank, info.user)
+        } catch (_: RuntimeException) {
+            return null
+        }
+        if (badged === blank) return null
+        return badged.toIconBitmap().takeIf { bitmap ->
+            IntArray(size * size).also { bitmap.getPixels(it, 0, size, 0, 0, size, size) }.any { it ushr 24 != 0 }
         }
     }
+
+    private fun Drawable.toIconBitmap(): Bitmap =
+        Bitmap.createBitmap(SidebarEntryProtocol.ICON_SIZE, SidebarEntryProtocol.ICON_SIZE, Bitmap.Config.ARGB_8888).also {
+            setBounds(0, 0, it.width, it.height)
+            draw(Canvas(it))
+        }
 
     private fun clonedActivityInfo(bean: Any, packageName: String): LauncherActivityInfo? {
         val userId = cloneUserId.call(bean) as? Int ?: return null

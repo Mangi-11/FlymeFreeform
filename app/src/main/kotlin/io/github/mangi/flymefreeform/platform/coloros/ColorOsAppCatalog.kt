@@ -23,6 +23,7 @@ internal data class RadialEntry(
     val target: PinnedTarget,
     val label: String,
     val icon: Bitmap,
+    val badge: Bitmap? = null,
 )
 
 internal data class AppCatalogSnapshot(
@@ -83,7 +84,10 @@ internal class ColorOsAppCatalog(
                     }
                 }
             }
-            shapedRadial.forEach { it.icon.prepareToDraw() }
+            shapedRadial.forEach { entry ->
+                entry.icon.prepareToDraw()
+                entry.badge?.prepareToDraw()
+            }
             if (revision == contentRevision.get()) publish(AppCatalogSnapshot(shapedRadial, content.panelApps, settings))
         }
     }
@@ -99,7 +103,8 @@ internal class ColorOsAppCatalog(
                 .mapNotNull(::toEntry)
                 .distinctBy(RadialEntry::target)
                 .toList()
-        val nativeEntries = sidebarEntries.map { RadialEntry(it.target, it.label, it.icon) }
+        val sidebar = sidebarEntries
+        val nativeEntries = sidebar.map { RadialEntry(it.target, it.label, it.icon, it.badge) }
         val byComponent = (entries + nativeEntries).associateBy(RadialEntry::target)
         val recents = recentComponents().map { it.toTarget() }.mapNotNull(byComponent::get).distinctBy(RadialEntry::target)
         val collator = Collator.getInstance(Locale.getDefault())
@@ -125,8 +130,15 @@ internal class ColorOsAppCatalog(
                 identity = RadialEntry::target,
             )
         val activityByComponent = activities.associateBy { it.componentName.toTarget() }
+        // 分身与主应用共用图标资源；包内只有一个入口时复用主用户的自适应图标，与普通应用同样原生塑形。
+        val cloneActivities = sidebar
+            .filter { (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.CloneApp }
+            .mapNotNull { entry ->
+                activities.filter { it.componentName.packageName == entry.packageName }
+                    .singleOrNull()?.let { entry.target to it }
+            }.toMap()
         val sources = radial.mapNotNull { entry ->
-            val info = activityByComponent[entry.target]
+            val info = activityByComponent[entry.target] ?: cloneActivities[entry.target]
             if (info == null) return@mapNotNull entry.target to BitmapDrawable(context.resources, entry.icon)
             try {
                 entry.target to info.getIcon(context.resources.displayMetrics.densityDpi)

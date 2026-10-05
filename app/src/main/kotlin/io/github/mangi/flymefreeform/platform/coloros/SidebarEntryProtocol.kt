@@ -33,6 +33,7 @@ internal object SidebarEntryProtocol {
     private const val LABEL = "label"
     private const val PACKAGE = "package"
     private const val ICON = "icon"
+    private const val BADGE = "badge"
     const val TIMEOUT_MS = 7_000L
     const val MAX_ENTRIES = 256
     const val ICON_SIZE = 96
@@ -51,6 +52,7 @@ internal object SidebarEntryProtocol {
         data.putString(LABEL, entry.label.take(160))
         data.putString(PACKAGE, entry.packageName.take(256))
         data.putParcelable(ICON, entry.icon)
+        entry.badge?.let { data.putParcelable(BADGE, it) }
     }
 
     fun readEntry(data: Bundle, userId: Int): SelectableEntry? {
@@ -58,10 +60,16 @@ internal object SidebarEntryProtocol {
         if (target.userId != userId) return null
         val label = data.getString(LABEL)?.takeIf { it.isNotBlank() && it.length <= 160 } ?: return null
         val pkg = data.getString(PACKAGE)?.takeIf { it.length <= 256 } ?: return null
-        val icon = data.getParcelable(ICON, Bitmap::class.java)?.takeIf {
-            !it.isRecycled && it.width in 1..ICON_SIZE && it.height in 1..ICON_SIZE &&
-                it.allocationByteCount <= ICON_SIZE * ICON_SIZE * 4
-        } ?: return null
-        return SelectableEntry(target, label, pkg, icon)
+        val icon = data.getParcelable(ICON, Bitmap::class.java)?.takeIf(::validIcon) ?: return null
+        val badge = if (data.containsKey(BADGE)) {
+            data.getParcelable(BADGE, Bitmap::class.java)
+                ?.takeIf { validIcon(it) && it.width == icon.width && it.height == icon.height }
+                ?: return null
+        } else null
+        return SelectableEntry(target, label, pkg, icon, badge)
     }
+
+    private fun validIcon(bitmap: Bitmap): Boolean =
+        !bitmap.isRecycled && bitmap.width in 1..ICON_SIZE && bitmap.height in 1..ICON_SIZE &&
+            bitmap.allocationByteCount <= ICON_SIZE * ICON_SIZE * 4
 }
