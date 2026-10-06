@@ -518,9 +518,14 @@ internal class CornerRadialOverlayView(
                         style = Stroke(width = strokeWidth),
                     )
                 }
-                // 角标位于图标外接正方形的右下角，叠在圆形与选中外圈之上，不参与圆形裁剪。
-                radialImages.value.getOrNull(index)?.badge?.let { badge ->
-                    drawBadge(badge, centerX, centerY, diameter, contentAlpha)
+                // 左右扇形的角标分别位于左下角、右下角，避开相邻图标，不参与圆形裁剪。
+                radialImages.value.getOrNull(index)?.let { image ->
+                    image.badge?.let { badge ->
+                        drawBadge(
+                            badge, centerX, centerY, diameter, contentAlpha,
+                            horizontalOffsetFraction = if (layout.side == CornerSide.Left) image.badgeLeftOffsetFraction else 0f,
+                        )
+                    }
                 }
             }
         }
@@ -552,12 +557,16 @@ internal class CornerRadialOverlayView(
         centerY: Float,
         size: Float,
         alpha: Float,
+        horizontalOffsetFraction: Float,
     ) {
         val pixels = size.roundToInt()
         if (pixels <= 0) return
         drawImage(
             image = badge,
-            dstOffset = IntOffset((centerX - pixels / 2f).roundToInt(), (centerY - pixels / 2f).roundToInt()),
+            dstOffset = IntOffset(
+                (centerX - pixels / 2f + pixels * horizontalOffsetFraction).roundToInt(),
+                (centerY - pixels / 2f).roundToInt(),
+            ),
             dstSize = IntSize(pixels, pixels),
             alpha = alpha,
             filterQuality = FilterQuality.High,
@@ -1131,4 +1140,5 @@ private fun Modifier.panelReveal(
 private class RadialImage(entry: RadialEntry) {
     val icon: ImageBitmap = entry.icon.asImageBitmap()
     val badge: ImageBitmap? = entry.badge?.asImageBitmap()
+    val badgeLeftOffsetFraction: Float = entry.badgeLeftOffsetFraction
 }

@@ -24,6 +24,7 @@ internal data class RadialEntry(
     val label: String,
     val icon: Bitmap,
     val badge: Bitmap? = null,
+    val badgeLeftOffsetFraction: Float = 0f,
 )
 
 internal data class AppCatalogSnapshot(
@@ -104,7 +105,9 @@ internal class ColorOsAppCatalog(
                 .distinctBy(RadialEntry::target)
                 .toList()
         val sidebar = sidebarEntries
-        val nativeEntries = sidebar.map { RadialEntry(it.target, it.label, it.icon, it.badge) }
+        val nativeEntries = sidebar.map {
+            RadialEntry(it.target, it.label, it.icon, it.badge, it.badge?.leftOffsetFraction() ?: 0f)
+        }
         val byComponent = (entries + nativeEntries).associateBy(RadialEntry::target)
         val recents = recentComponents().map { it.toTarget() }.mapNotNull(byComponent::get).distinctBy(RadialEntry::target)
         val collator = Collator.getInstance(Locale.getDefault())
@@ -157,6 +160,22 @@ internal class ColorOsAppCatalog(
         val panelApps: List<RadialEntry>,
         val radialSources: Map<PinnedTarget, Drawable>,
     )
+
+    /** 在目录工作线程测量可见范围；左侧只平移角标，避免翻转其中的数字。 */
+    private fun Bitmap.leftOffsetFraction(): Float {
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        var left = width
+        var right = 0
+        pixels.forEachIndexed { index, pixel ->
+            if (pixel ushr 24 != 0) {
+                val x = index % width
+                left = minOf(left, x)
+                right = maxOf(right, x + 1)
+            }
+        }
+        return if (left < right) (width - left - right).toFloat() / width else 0f
+    }
 
     private fun ComponentName.toTarget() = PinnedTarget.App(packageName, className)
 
