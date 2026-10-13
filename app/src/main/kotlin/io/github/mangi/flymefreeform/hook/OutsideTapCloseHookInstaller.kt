@@ -16,6 +16,7 @@ import io.github.libxposed.api.XposedModule
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.gesture.OutsideTapGestureEngine
 import io.github.mangi.flymefreeform.platform.coloros.ColorOsDisplayContentImeAccess
+import io.github.mangi.flymefreeform.platform.coloros.ColorOsTaskImeBoundsAccess
 import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -50,6 +51,7 @@ internal class OutsideTapCloseHookInstaller(
                     listenerClass = listenerClass,
                     controllerClass = controllerClass,
                     taskClass = taskClass,
+                    taskExtClass = classLoader.loadClass(TASK_EXT_CLASS),
                     displayContentClass = displayContentClass,
                     windowStateClass = windowStateClass,
                     captionClass = captionClass,
@@ -138,6 +140,7 @@ internal class OutsideTapCloseHookInstaller(
         listenerClass: Class<*>,
         controllerClass: Class<*>,
         taskClass: Class<*>,
+        taskExtClass: Class<*>,
         displayContentClass: Class<*>,
         windowStateClass: Class<*>,
         captionClass: Class<*>,
@@ -151,6 +154,8 @@ internal class OutsideTapCloseHookInstaller(
         private val captionControllerField = captionClass.requiredField("mFlexibleTaskController")
         private val inputMethodWindow =
             ColorOsDisplayContentImeAccess(displayContentClass, windowStateClass)
+        private val inputMethodTaskBounds =
+            ColorOsTaskImeBoundsAccess(taskClass, taskExtClass, Rect::class.java)
         private val updateCaptionTouchRegion = captionClass.requiredMethod("updateTouchRegion", 0)
         private val getTopZoomTask = controllerClass.requiredMethod("getTopZoomTask", 0)
         private val isCanRespondEvent = controllerClass.requiredMethod("isCanRespondEvent", 0)
@@ -183,7 +188,6 @@ internal class OutsideTapCloseHookInstaller(
                     ),
             )
         private val getDisplayContent = taskClass.requiredMethod("getDisplayContent", 0)
-        private val getTaskBounds = taskClass.requiredMethod("getBounds", 0)
         private val getDisplayBounds = displayContentClass.requiredMethod("getBounds", 0)
         private val isWindowVisible = windowStateClass.requiredMethod("isVisible", 0)
         private val getTouchableRegion =
@@ -241,15 +245,12 @@ internal class OutsideTapCloseHookInstaller(
             val captionView = caption as? View ?: return clearProtection(caption)
             val localWidth = captionView.width
             val localHeight = captionView.height
-            val taskBounds = getTaskBounds.invokeUnwrapped(task) as? Rect ?: return clearProtection(caption)
-            val visibleBounds = getVisibleBounds.invokeUnwrapped(controller, task) as? Rect
-                ?: return clearProtection(caption)
+            val visibleBounds = visibleTaskBounds(controller, task) ?: return clearProtection(caption)
             val displayBounds = getDisplayBounds.invokeUnwrapped(displayContent) as? Rect
                 ?: return clearProtection(caption)
             if (
                 localWidth <= 0 ||
                     localHeight <= 0 ||
-                    taskBounds.isEmpty ||
                     visibleBounds.isEmpty ||
                     displayBounds.isEmpty
             ) {
@@ -324,10 +325,15 @@ internal class OutsideTapCloseHookInstaller(
                     (tasks as? Iterable<*>)?.filterNotNull()?.toList().orEmpty()
                 }
             return taskSnapshot.mapNotNull { flexibleTask ->
-                (getVisibleBounds.invokeUnwrapped(controller, flexibleTask) as? Rect)
-                    ?.takeUnless { it.isEmpty }
-                    ?.let(::Rect)
+                visibleTaskBounds(controller, flexibleTask)?.takeUnless { it.isEmpty }
             }
+        }
+
+        private fun visibleTaskBounds(controller: Any, task: Any): Rect? {
+            // 输入法会单独平移、裁短标题层，Task 原始边界仍可能保持弹出前的尺寸。
+            val imeBounds = (inputMethodTaskBounds.get(task) as? Rect)?.let(::Rect)
+            if (imeBounds != null && !imeBounds.isEmpty) return imeBounds
+            return (getVisibleBounds.invokeUnwrapped(controller, task) as? Rect)?.let(::Rect)
         }
 
         private fun visibleImeRegion(displayContent: Any): Region? {
@@ -535,7 +541,7 @@ internal class OutsideTapCloseHookInstaller(
                 updateTapExcludeRegion.invokeUnwrapped(controller, displayContent, null) as? Region
             if (excludedRegion?.contains(pointX, pointY) == true) return false
             if (hasTouchableTask.invokeUnwrapped(controller, pointX, pointY) == true) return false
-            val visibleBounds = getVisibleBounds.invokeUnwrapped(controller, task) as? Rect ?: return false
+            val visibleBounds = visibleTaskBounds(controller, task) ?: return false
             return !visibleBounds.isEmpty && !visibleBounds.contains(pointX, pointY)
         }
 
@@ -565,6 +571,7 @@ internal class OutsideTapCloseHookInstaller(
             "com.android.server.wm.FlexibleTaskController\$TouchListener"
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
         const val TASK_CLASS = "com.android.server.wm.Task"
+        const val TASK_EXT_CLASS = "com.android.server.wm.TaskExtImpl"
         const val DISPLAY_CONTENT_CLASS = "com.android.server.wm.DisplayContent"
         const val WINDOW_STATE_CLASS = "com.android.server.wm.WindowState"
         const val FLEXIBLE_CAPTION_VIEW_CLASS = "com.android.server.wm.FlexibleCaptionView"
