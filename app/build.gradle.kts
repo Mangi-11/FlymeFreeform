@@ -58,7 +58,7 @@ androidComponents {
         val suffix = if (variant.buildType == "debug") "-Debug" else ""
         variant.outputs.forEach { output ->
             output.outputFileName.set(
-                output.versionName.map { version -> "FlymeFreeform-$version$suffix.apk" },
+                output.versionName.map { version -> "FlymeFreeform-v$version$suffix.apk" },
             )
         }
     }
