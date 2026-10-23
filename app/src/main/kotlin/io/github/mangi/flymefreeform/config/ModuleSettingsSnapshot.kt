@@ -93,10 +93,11 @@ internal data class ModuleSettingsSnapshot(
             } else {
                 PinnedTargetCodec.decodeLegacy(preferences.getString(ModulePreferences.KEY_CORNER_PINS, "").orEmpty())
             }
+            val bothCornersDisabled = !leftEnabled && !rightEnabled
             return ModuleSettingsSnapshot(
                 enabled = enabled,
-                leftCornerEnabled = leftEnabled,
-                rightCornerEnabled = rightEnabled,
+                leftCornerEnabled = if (bothCornersDisabled) true else leftEnabled,
+                rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 pinsSaved = pinsSaved,
                 pinnedTargets = pins,

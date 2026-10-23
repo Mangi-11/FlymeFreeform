@@ -49,11 +49,14 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setModuleEnabled(enabled: Boolean) =
         updateSettings { it.copy(enabled = enabled) }
 
-    fun setLeftCornerEnabled(enabled: Boolean) =
-        updateSettings { it.copy(leftCornerEnabled = enabled) }
-
-    fun setRightCornerEnabled(enabled: Boolean) =
-        updateSettings { it.copy(rightCornerEnabled = enabled) }
+    fun setCornerSides(leftEnabled: Boolean, rightEnabled: Boolean) =
+        updateSettings {
+            val bothDisabled = !leftEnabled && !rightEnabled
+            it.copy(
+                leftCornerEnabled = if (bothDisabled) true else leftEnabled,
+                rightCornerEnabled = if (bothDisabled) true else rightEnabled,
+            )
+        }
 
     fun setCornerTriggerRangeDp(rangeDp: Int) =
         updateSettings {

@@ -36,8 +36,7 @@ class MainActivity : ComponentActivity() {
                     onRefreshCatalog = sidebarRepository::refresh,
                     onCancelCatalog = sidebarRepository::cancel,
                     onModuleEnabledChange = repository::setModuleEnabled,
-                    onLeftCornerEnabledChange = repository::setLeftCornerEnabled,
-                    onRightCornerEnabledChange = repository::setRightCornerEnabled,
+                    onCornerSidesChange = repository::setCornerSides,
                     onCornerTriggerRangeChange = repository::setCornerTriggerRangeDp,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =

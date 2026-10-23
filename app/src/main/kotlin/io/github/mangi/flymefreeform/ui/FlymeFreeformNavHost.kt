@@ -31,8 +31,7 @@ internal fun FlymeFreeformNavHost(
     onRefreshCatalog: () -> Unit,
     onCancelCatalog: () -> Unit,
     onModuleEnabledChange: (Boolean) -> Unit,
-    onLeftCornerEnabledChange: (Boolean) -> Unit,
-    onRightCornerEnabledChange: (Boolean) -> Unit,
+    onCornerSidesChange: (Boolean, Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
@@ -68,8 +67,7 @@ internal fun FlymeFreeformNavHost(
                     ControlScreen(
                         state = state,
                         onModuleEnabledChange = onModuleEnabledChange,
-                        onLeftCornerEnabledChange = onLeftCornerEnabledChange,
-                        onRightCornerEnabledChange = onRightCornerEnabledChange,
+                        onCornerSidesChange = onCornerSidesChange,
                         onCornerTriggerRangeChange = onCornerTriggerRangeChange,
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =

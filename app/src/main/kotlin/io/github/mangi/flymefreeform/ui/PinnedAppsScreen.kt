@@ -81,6 +81,8 @@ import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 @Composable
 internal fun PinnedAppsScreen(
@@ -160,6 +162,8 @@ internal fun PinnedAppsScreen(
                     Modifier
                         .fillMaxSize()
                         .consumeWindowInsets(innerPadding)
+                        .scrollEndHaptic()
+                        .overScrollVertical()
                         .nestedScroll(scrollBehavior.nestedScrollConnection),
                 contentPadding =
                     PaddingValues(
@@ -168,10 +172,16 @@ internal fun PinnedAppsScreen(
                         end = safeEnd + side,
                         bottom = innerPadding.calculateBottomPadding() + ScreenBottomSpacing,
                     ),
+                overscrollEffect = null,
                 ) {
                 item(key = "added_intro") {
                     Text(
-                        text = stringResource(R.string.added_apps_title),
+                        text =
+                            stringResource(
+                                R.string.added_apps_title,
+                                displayed.size,
+                                ModulePreferences.MAX_PINNED_APPS,
+                            ),
                         modifier =
                             Modifier
                                 .padding(start = 16.dp, bottom = 8.dp)

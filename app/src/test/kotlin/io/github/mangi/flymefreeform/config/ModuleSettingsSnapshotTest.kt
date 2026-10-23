@@ -147,6 +147,20 @@ class ModuleSettingsSnapshotTest {
     }
 
     @Test
+    fun bothCornersDisabledInStoredPreferencesNormalizeToBothEnabled() {
+        val preferences =
+            InMemoryPreferences(
+                ModulePreferences.KEY_LEFT_CORNER_ENABLED to false,
+                ModulePreferences.KEY_RIGHT_CORNER_ENABLED to false,
+            )
+
+        val snapshot = ModuleSettingsSnapshot.readFrom(preferences)
+
+        assertTrue(snapshot.leftCornerEnabled)
+        assertTrue(snapshot.rightCornerEnabled)
+    }
+
+    @Test
     fun cornerRangeIsClampedAndRoundTripsWhenWritten() {
         val preferences = InMemoryPreferences()
         ModuleSettingsSnapshot(
