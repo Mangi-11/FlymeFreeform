@@ -1,15 +1,15 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
-import org.luckypray.dexkit.DexKitBridge
-import org.luckypray.dexkit.result.FieldUsingType
 import java.io.InterruptedIOException
 import java.lang.reflect.Modifier
+import org.luckypray.dexkit.DexKitBridge
+import org.luckypray.dexkit.result.FieldUsingType
 
 /** 桌面输入适配的字节码证据；查询结果不持有 native bridge 或宿主对象。 */
 internal object LauncherDexQuery {
     const val SERVICE_CLASS = "com.android.quickstep.OplusBaseTouchInteractionService"
     const val INPUT_MONITOR_CLASS = "android.view.InputMonitor"
-    const val RULE_VERSION = "launcher-input-v1-dexkit-2.2.0"
+    const val RULE_VERSION = "launcher-input-v1-dexkit-2.3.0"
 
     data class Symbols(
         val inputMethod: String,

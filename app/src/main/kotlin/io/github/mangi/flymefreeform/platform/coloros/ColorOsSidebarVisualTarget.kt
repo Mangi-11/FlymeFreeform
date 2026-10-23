@@ -1,15 +1,16 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
+import android.annotation.SuppressLint
 import android.view.View
-import org.luckypray.dexkit.DexKitBridge
-import org.luckypray.dexkit.wrap.DexField
-import org.luckypray.dexkit.wrap.DexMethod
 import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import org.luckypray.dexkit.DexKitBridge
+import org.luckypray.dexkit.wrap.DexField
+import org.luckypray.dexkit.wrap.DexMethod
 
 /** 只保存已经校验的成员；宿主单例与模糊实例在创建内容时才在主线程取得。 */
 internal data class ColorOsSidebarVisualTarget(
@@ -50,6 +51,8 @@ internal data class ColorOsSidebarVisualTarget(
                     report("SIDEBAR_DEX_CACHE_REJECTED", e)
                 }
             }
+            // 仅缓存失效时解析一次，use 负责释放；桌面进程的同名 apk.path 并非同一实例。
+            @SuppressLint("DuplicateCreateDexKit")
             val symbols = DexKitBridge.create(apk.path).use { bridge ->
                 bridge.setThreadNum(1)
                 SidebarDexQuery.find(bridge, report)

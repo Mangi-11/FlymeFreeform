@@ -1,5 +1,6 @@
 package io.github.mangi.flymefreeform.framework
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -269,6 +270,8 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             ModuleSettingsSnapshot().takeIf { defaults -> commitSettings(preferences, defaults) }
         }
 
+    // KTX edit 返回 Unit；这里必须将远端 commit 的失败结果传回 UI。
+    @SuppressLint("UseKtx")
     private fun commitSettings(preferences: SharedPreferences, settings: ModuleSettingsSnapshot): Boolean =
         try {
             settings.writeTo(preferences.edit()).commit()

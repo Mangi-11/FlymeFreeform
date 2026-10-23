@@ -4,15 +4,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.runtime.rememberNavBackStack
-import androidx.navigation3.ui.NavDisplay
 import io.github.mangi.flymefreeform.apps.SelectableEntry
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.config.PinnedTarget
 import io.github.mangi.flymefreeform.framework.FrameworkConnectionState
 import kotlinx.serialization.Serializable
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 
 @Serializable
 internal sealed interface AppRoute : NavKey {
@@ -40,7 +39,7 @@ internal fun FlymeFreeformNavHost(
     onRequestScopes: () -> Unit,
     onPinnedTargetsChange: (List<PinnedTarget>) -> Unit,
 ) {
-    val backStack = rememberNavBackStack(AppRoute.Settings)
+    val backStack = rememberNavBackStack<AppRoute>(AppRoute.Settings)
     val popBackStack = remember(backStack) {
         {
             if (backStack.size > 1) {
@@ -61,34 +60,32 @@ internal fun FlymeFreeformNavHost(
         backStack = backStack,
         modifier = Modifier.fillMaxSize(),
         onBack = popBackStack,
-        entryProvider =
-            entryProvider {
-                entry<AppRoute.Settings> {
-                    ControlScreen(
-                        state = state,
-                        onModuleEnabledChange = onModuleEnabledChange,
-                        onCornerSidesChange = onCornerSidesChange,
-                        onCornerTriggerRangeChange = onCornerTriggerRangeChange,
-                        onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
-                        onHandleSwipeUpToMiniEnabledChange =
-                            onHandleSwipeUpToMiniEnabledChange,
-                        onPauseInLandscapeChange = onPauseInLandscapeChange,
-                        onPauseInGameModeChange = onPauseInGameModeChange,
-                        onRequestScopes = onRequestScopes,
-                        onNavigateToPinnedApps = navigateToPinnedApps,
-                    )
-                }
-                entry<AppRoute.PinnedApps> {
-                    PinnedAppsScreen(
-                        state = state,
-                        apps = apps,
-                        sidebarCatalog = sidebarCatalog,
-                        onRefreshCatalog = onRefreshCatalog,
-                        onCancelCatalog = onCancelCatalog,
-                        onBack = popBackStack,
-                        onPinnedTargetsChange = onPinnedTargetsChange,
-                    )
-                }
-            },
-    )
+    ) {
+        entry<AppRoute.Settings> {
+            ControlScreen(
+                state = state,
+                onModuleEnabledChange = onModuleEnabledChange,
+                onCornerSidesChange = onCornerSidesChange,
+                onCornerTriggerRangeChange = onCornerTriggerRangeChange,
+                onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
+                onHandleSwipeUpToMiniEnabledChange =
+                    onHandleSwipeUpToMiniEnabledChange,
+                onPauseInLandscapeChange = onPauseInLandscapeChange,
+                onPauseInGameModeChange = onPauseInGameModeChange,
+                onRequestScopes = onRequestScopes,
+                onNavigateToPinnedApps = navigateToPinnedApps,
+            )
+        }
+        entry<AppRoute.PinnedApps> {
+            PinnedAppsScreen(
+                state = state,
+                apps = apps,
+                sidebarCatalog = sidebarCatalog,
+                onRefreshCatalog = onRefreshCatalog,
+                onCancelCatalog = onCancelCatalog,
+                onBack = popBackStack,
+                onPinnedTargetsChange = onPinnedTargetsChange,
+            )
+        }
+    }
 }

@@ -559,6 +559,8 @@ internal class OutsideTapCloseHookInstaller(
             return ViewConfiguration.get(context)
         }
 
+        // 此处运行于系统输入回调，无附着 View；保留厂商状态栏资源作为顶部排除区。
+        @SuppressLint("InternalInsetResource", "DiscouragedApi")
         private fun statusBarHeight(context: Context): Int {
             val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
             return if (id != 0) context.resources.getDimensionPixelSize(id) else 0

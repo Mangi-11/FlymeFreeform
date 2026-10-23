@@ -10,6 +10,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
+import androidx.core.graphics.createBitmap
 import io.github.mangi.flymefreeform.config.PinnedTarget
 import java.text.Collator
 import java.util.Locale
@@ -87,7 +88,7 @@ internal class LauncherAppRepository(private val context: Context) {
             if (bitmap.width == targetSize && bitmap.height == targetSize) return bitmap
             return Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true)
         }
-        val result = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val result = createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         setBounds(0, 0, canvas.width, canvas.height)
         draw(canvas)

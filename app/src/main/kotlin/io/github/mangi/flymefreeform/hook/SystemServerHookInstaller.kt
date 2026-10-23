@@ -1,5 +1,6 @@
 package io.github.mangi.flymefreeform.hook
 
+import android.annotation.SuppressLint
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -19,6 +20,8 @@ internal class SystemServerHookInstaller(
         OutsideTapCloseHookInstaller(module, configuration, environment).install(classLoader)
         HandleSwipeUpHookInstaller(module, configuration, environment).install(classLoader)
         try {
+            // 厂商初始化入口只能反射定位；缺失时保留系统启动流程。
+            @SuppressLint("PrivateApi")
             val controllerClass = classLoader.loadClass(FLEXIBLE_TASK_CONTROLLER_CLASS)
             val systemReady = controllerClass.getDeclaredMethod("systemReady", Boolean::class.javaPrimitiveType)
             module

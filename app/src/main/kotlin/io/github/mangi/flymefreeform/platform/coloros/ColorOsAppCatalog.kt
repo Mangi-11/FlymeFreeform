@@ -10,6 +10,8 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toDrawable
 import io.github.mangi.flymefreeform.apps.AppSelectionPolicy
 import io.github.mangi.flymefreeform.apps.SelectableEntry
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
@@ -142,7 +144,7 @@ internal class ColorOsAppCatalog(
             }.toMap()
         val sources = radial.mapNotNull { entry ->
             val info = activityByComponent[entry.target] ?: cloneActivities[entry.target]
-            if (info == null) return@mapNotNull entry.target to BitmapDrawable(context.resources, entry.icon)
+            if (info == null) return@mapNotNull entry.target to entry.icon.toDrawable(context.resources)
             try {
                 entry.target to info.getIcon(context.resources.displayMetrics.densityDpi)
             } catch (_: RuntimeException) {
@@ -184,7 +186,7 @@ internal class ColorOsAppCatalog(
         return try {
             @Suppress("DEPRECATION")
             activityManager.getRecentTasks(RECENT_LIMIT, ActivityManager.RECENT_WITH_EXCLUDED)
-                .mapNotNull { task -> task.origActivity ?: task.baseIntent?.component }
+                .mapNotNull { task -> task.origActivity ?: task.baseIntent.component }
                 .filterNot { component -> component.packageName == context.packageName }
         } catch (_: SecurityException) {
             emptyList()
@@ -214,7 +216,7 @@ internal class ColorOsAppCatalog(
             if (bitmap.width == targetSize && bitmap.height == targetSize) return bitmap
             return Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true)
         }
-        return Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888).also { bitmap ->
+        return createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888).also { bitmap ->
             val canvas = Canvas(bitmap)
             setBounds(0, 0, canvas.width, canvas.height)
             draw(canvas)

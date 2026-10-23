@@ -7,10 +7,11 @@ import android.content.pm.LauncherApps
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.IInterface
 import android.os.UserHandle
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toDrawable
 import io.github.mangi.flymefreeform.apps.SelectableEntry
 import io.github.mangi.flymefreeform.config.PinnedTarget
 import io.github.mangi.flymefreeform.config.PinnedTargetCodec
@@ -137,7 +138,7 @@ internal class ColorOsSidebarEntries(private val context: Context, loader: Class
                         BitmapFactory.decodeByteArray(it, 0, it.size, options)
                     }
                 }
-                bitmap?.let { BitmapDrawable(context.resources, it) }
+                bitmap?.toDrawable(context.resources)
             }
         }
         val source = drawable ?: try {
@@ -151,7 +152,7 @@ internal class ColorOsSidebarEntries(private val context: Context, loader: Class
     /** 让系统在透明底图上绘制分身用户角标，位置与比例沿用系统徽标规则。 */
     private fun cloneBadge(info: LauncherActivityInfo): Bitmap? {
         val size = SidebarEntryProtocol.ICON_SIZE
-        val blank = BitmapDrawable(context.resources, Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888))
+        val blank = createBitmap(size, size, Bitmap.Config.ARGB_8888).toDrawable(context.resources)
         val badged = try {
             context.packageManager.getUserBadgedIcon(blank, info.user)
         } catch (_: RuntimeException) {
@@ -164,7 +165,7 @@ internal class ColorOsSidebarEntries(private val context: Context, loader: Class
     }
 
     private fun Drawable.toIconBitmap(): Bitmap =
-        Bitmap.createBitmap(SidebarEntryProtocol.ICON_SIZE, SidebarEntryProtocol.ICON_SIZE, Bitmap.Config.ARGB_8888).also {
+        createBitmap(SidebarEntryProtocol.ICON_SIZE, SidebarEntryProtocol.ICON_SIZE, Bitmap.Config.ARGB_8888).also {
             setBounds(0, 0, it.width, it.height)
             draw(Canvas(it))
         }

@@ -2,7 +2,7 @@
 
 ## DexKit
 
-本项目使用 LuckyPray 的 [DexKit 2.2.0](https://github.com/LuckyPray/DexKit/tree/2.2.0) 定位桌面 APK 中的混淆输入成员，使用 Maven Central 发布的原始 AAR，未修改库源码。
+本项目使用 LuckyPray 的 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0) 定位桌面 APK 中的混淆输入成员，使用 Maven Central 发布的原始 AAR，未修改库源码。
 
 根据该版本发布配置，`Core/` 使用 LGPL-3.0，其余部分使用 Apache-2.0。部分源文件还保留 LGPL 声明，原始版权与许可声明以对应版本源码为准。完整源码可从上述版本链接取得；APK 的 `assets/licenses/` 附带 Apache-2.0、LGPL-3.0 与 GPL-3.0 文本。
 

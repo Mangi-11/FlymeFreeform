@@ -1,5 +1,6 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
+import android.annotation.SuppressLint
 import android.content.res.Resources
 import android.graphics.Path
 import android.graphics.drawable.AdaptiveIconDrawable
@@ -80,6 +81,8 @@ internal class ColorOsRadialIconRenderer(
         }
     }
 
+    // ColorOS 图标配置没有公开 API；解析失败时 shapedIcon 保留系统原图标。
+    @SuppressLint("PrivateApi")
     private class NativeAccess {
         val extension = AdaptiveIconDrawable::class.java.getField("mIconDrawableExt")
         private val extensionClass = Class.forName("android.graphics.drawable.AdaptiveIconDrawableExtImpl")

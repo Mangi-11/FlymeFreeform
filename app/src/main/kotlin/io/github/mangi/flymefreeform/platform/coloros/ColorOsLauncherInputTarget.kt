@@ -1,13 +1,14 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.view.InputEvent
-import org.luckypray.dexkit.DexKitBridge
 import java.io.File
 import java.io.IOException
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import org.luckypray.dexkit.DexKitBridge
 
 internal data class ColorOsLauncherInputTarget(
     val inputMethod: Method,
@@ -53,6 +54,8 @@ internal data class ColorOsLauncherInputTarget(
             return target
         }
 
+        // InputMonitor 属于桌面持有的隐藏类型；下方校验字段和方法签名，失败交由安装层回退。
+        @SuppressLint("PrivateApi")
         private fun bind(loader: ClassLoader, symbols: LauncherDexQuery.Symbols): ColorOsLauncherInputTarget {
             val service = loader.loadClass(LauncherDexQuery.SERVICE_CLASS)
             require(Context::class.java.isAssignableFrom(service))

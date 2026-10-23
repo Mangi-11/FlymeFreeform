@@ -1,13 +1,13 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
+import java.io.InterruptedIOException
+import java.lang.reflect.Modifier
 import org.luckypray.dexkit.DexKitBridge
 import org.luckypray.dexkit.result.MethodData
-import java.lang.reflect.Modifier
-import java.io.InterruptedIOException
 
 /** 从宿主调用关系定位，不以 Android SDK 或混淆名作为版本选择依据。 */
 internal object SidebarDexQuery {
-    const val RULE_VERSION = "sidebar-v2-dexkit-2.2.0"
+    const val RULE_VERSION = "sidebar-v2-dexkit-2.3.0"
     private const val UTILS = "com.oplus.smartsidebar.utils"
     private const val SIZE = "com.oplus.smartsidebar.panelview.edgepanel.utils.MainPanelSizeHelper"
     private const val MAIN = "com.oplus.smartsidebar.panelview.edgepanel.PanelMainView"

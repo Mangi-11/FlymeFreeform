@@ -1,6 +1,7 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.SystemClock
@@ -15,6 +16,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import androidx.core.view.isNotEmpty
 import io.github.mangi.flymefreeform.window.AllAppsPanelGeometry
 import io.github.mangi.flymefreeform.window.AllAppsPanelMotion
 
@@ -97,15 +99,15 @@ internal class ColorOsAllAppsWindow(
             metrics.bounds.width(), metrics.bounds.height(), dimensions, mode, leftSide,
             safe.left, safe.top, safe.right, safe.bottom,
         )
-        root.addView(card, FrameLayout.LayoutParams(initial.width, initial.height).apply {
+        // 几何结果以显示左上角为原点，RTL 不镜像窗口的物理位置。
+        @SuppressLint("RtlHardcoded")
+        val cardLayout = FrameLayout.LayoutParams(initial.width, initial.height).apply {
             leftMargin = initial.left
             topMargin = initial.top
             gravity = Gravity.TOP or Gravity.LEFT
-        })
-        root.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_UP) dismiss()
-            true
         }
+        root.addView(card, cardLayout)
+        root.setOnClickListener { dismiss() }
         root.setOnApplyWindowInsetsListener { _, value ->
             insets = value
             placeCard()
@@ -164,7 +166,7 @@ internal class ColorOsAllAppsWindow(
     }
 
     fun isShown(): Boolean = attached && !closed && !exiting && !entering &&
-        root.isShown && card.width > 0 && content.view.childCount > 0
+        root.isShown && card.width > 0 && content.view.isNotEmpty()
 
     fun beginItemClick(afterHidden: (() -> Unit)? = null): Boolean {
         if (!isShown()) return false
@@ -216,6 +218,8 @@ internal class ColorOsAllAppsWindow(
         if (!exiting && !content.leaveSearch()) dismiss()
     }
 
+    // leftMargin 是物理坐标，必须与初次放置使用同一坐标系。
+    @SuppressLint("RtlHardcoded")
     private fun placeCard() {
         if (closed || root.width <= 0 || root.height <= 0) return
         val safe = insets?.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())

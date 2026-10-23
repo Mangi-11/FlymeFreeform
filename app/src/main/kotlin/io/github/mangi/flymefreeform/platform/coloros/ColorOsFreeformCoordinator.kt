@@ -1,5 +1,6 @@
 package io.github.mangi.flymefreeform.platform.coloros
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -203,6 +204,8 @@ internal class ColorOsFreeformCoordinator(
         if (pointerRegistered) return
         val generation = pointerGeneration
         try {
+            // 系统指针监听仅有隐藏接口；注册失败由本方法回退，不影响系统输入。
+            @SuppressLint("PrivateApi")
             val listenerInterface =
                 Class.forName(
                     "android.view.WindowManagerPolicyConstants\$PointerEventListener",

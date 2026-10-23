@@ -3,11 +3,12 @@ package io.github.mangi.flymefreeform.platform.coloros
 import android.animation.Animator
 import android.content.Context
 import android.os.IInterface
-import android.view.Menu
 import android.util.TypedValue
+import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.core.view.isNotEmpty
 import io.github.mangi.flymefreeform.window.AllAppsPanelGeometry
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -76,7 +77,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
         allClass.getMethod("showAllPanel", Boolean::class.javaPrimitiveType).call(view, leftSide())
     }
 
-    fun ready(): Boolean = view.childCount > 0 && getMain.call(handler) != null &&
+    fun ready(): Boolean = view.isNotEmpty() && getMain.call(handler) != null &&
         (getResident.call(handler) as? IInterface)?.asBinder()?.isBinderAlive == true
 
     fun sidebarHidden(): Boolean = (getMain.call(handler)?.let { getState.call(it) } as? Enum<*>)?.name == "FLOAT_BAR_SHOWING"
@@ -226,7 +227,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
         if (closed) return
         closed = true
         try {
-            if (view.childCount > 0) {
+            if (view.isNotEmpty()) {
                 (enterSearch?.call(search) as? Animator)?.cancel()
                 (exitSearch?.call(search) as? Animator)?.cancel()
             }
