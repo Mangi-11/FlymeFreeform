@@ -63,6 +63,7 @@
     <string name="back_action">返回</string>
 
     <string name="about_version_title">版本</string>
+    <string name="about_version_format">%1$s (%2$s)</string>
     <string name="about_github_title">GitHub</string>
     <string name="about_github_summary">Mangi-11/FlymeFreeform</string>
     <string name="pause_in_landscape_title">横屏时暂停</string>

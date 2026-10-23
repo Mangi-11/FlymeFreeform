@@ -1,7 +1,6 @@
 package io.github.mangi.flymefreeform.ui
 
 import android.content.ActivityNotFoundException
-import android.content.pm.PackageManager
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
@@ -50,11 +49,11 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.github.mangi.flymefreeform.BuildConfig
 import io.github.mangi.flymefreeform.R
 import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
@@ -492,31 +491,21 @@ private fun CornerRangePreview(
 
 @Composable
 private fun AboutCard() {
-    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    val versionName =
-        remember(context) {
-            try {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
-            } catch (_: PackageManager.NameNotFoundException) {
-                ""
-            }
-        }
     Card(modifier = Modifier.fillMaxWidth()) {
         BasicComponent(
             title = stringResource(R.string.about_version_title),
-            endActions =
-                if (versionName.isNotEmpty()) {
-                    {
-                        Text(
-                            text = versionName,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            style = MiuixTheme.textStyles.body2,
-                        )
-                    }
-                } else {
-                    null
-                },
+            endActions = {
+                Text(
+                    text = stringResource(
+                        R.string.about_version_format,
+                        BuildConfig.VERSION_NAME,
+                        BuildConfig.VERSION_CODE.toString(),
+                    ),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    style = MiuixTheme.textStyles.body2,
+                )
+            },
             startAction = { PreferenceIcon(Icons.Rounded.Info) },
         )
         ArrowPreference(
