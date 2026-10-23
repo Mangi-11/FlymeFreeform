@@ -19,6 +19,10 @@ android {
         targetSdk = 37
         versionCode = flymeFreeformVersionCode
         versionName = flymeFreeformVersionName
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
@@ -40,6 +44,9 @@ android {
     }
 
     packaging {
+        dex {
+            useLegacyPackaging = true
+        }
         resources {
             merges += "META-INF/xposed/*"
         }
